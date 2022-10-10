@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -15,15 +16,15 @@ import (
 )
 
 type Pack struct {
-	Queries map[string]QueryMeta
+	Queries map[string]QueryMeta `json:"queries"`
 }
 
 type QueryMeta struct {
-	Query       string
-	Interval    int
-	Platform    string
-	Version     string
-	Description string
+	Query       string `json:"query"`
+	Interval    int    `json:"internal,omitempty"`
+	Platform    string `json:"platform,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 func findQueries(path string) (map[string][]byte, error) {
@@ -40,6 +41,7 @@ func findQueries(path string) (map[string][]byte, error) {
 				if err != nil {
 					return err
 				}
+
 				qs[path] = bs
 			}
 			return nil
@@ -48,20 +50,58 @@ func findQueries(path string) (map[string][]byte, error) {
 	return qs, err
 }
 
-func emitPack(qs map[string][]byte) ([]byte, error) {
-	pack := &Pack{Queries: map[string]QueryMeta{}}
+func processQueries(qb map[string][]byte) map[string]QueryMeta {
+	qms := map[string]QueryMeta{}
+	for k, v := range qb {
+		qm := QueryMeta{}
 
-	for k, v := range qs {
-		name := filepath.Base(k)
-		qm := QueryMeta{
-			Query:    string(v),
-			Interval: 86400,
+		out := []string{}
+		outTrimmed := []string{}
+		for i, line := range bytes.Split(v, []byte("\n")) {
+			s := strings.TrimSuffix(string(line), "\n")
+			before, after, hasComment := strings.Cut(s, "--")
+			if strings.HasPrefix(s, "--") {
+				if i == 0 {
+					qm.Description = strings.TrimSpace(after)
+				}
+				continue
+			}
+			if hasComment {
+				out = append(out, before)
+				continue
+			}
+			out = append(out, s)
+			outTrimmed = append(outTrimmed, strings.TrimSpace(s))
 		}
-		klog.Infof("emit: %q=%s", k, v)
-		pack.Queries[name] = qm
+
+		if len(v) > 80 {
+			qm.Query = strings.TrimSpace(strings.Join(out, "\n"))
+		} else {
+			qm.Query = strings.TrimSpace(strings.Join(outTrimmed, " "))
+		}
+
+		if !strings.HasSuffix(qm.Query, ";") {
+			qm.Query = qm.Query + ";"
+		}
+
+		name := strings.ReplaceAll(filepath.Base(k), ".sql", "")
+		qms[name] = qm
 	}
 
-	return json.Marshal(pack)
+	return qms
+}
+
+func emitPack(qs map[string]QueryMeta) ([]byte, error) {
+	pack := &Pack{Queries: qs}
+	out, err := json.MarshalIndent(pack, "", "  ")
+	if err != nil {
+		return out, err
+	}
+
+	// hand massaging the query part for aesthetics
+	out = bytes.ReplaceAll(out, []byte(`\u003e`), []byte(">"))
+	out = bytes.ReplaceAll(out, []byte(`\u003c`), []byte("<"))
+	return bytes.ReplaceAll(out, []byte(`\n`), []byte(" \\\n    ")), nil
 }
 
 func main() {
@@ -75,7 +115,9 @@ func main() {
 		klog.Fatalf("find queries: %v", err)
 	}
 
-	bs, err := emitPack(qs)
+	qms := processQueries(qs)
+
+	bs, err := emitPack(qms)
 	if err != nil {
 		klog.Fatalf("emit: %v", err)
 	}
