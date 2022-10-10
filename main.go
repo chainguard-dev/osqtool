@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"k8s.io/klog/v2"
@@ -25,6 +26,7 @@ type QueryMeta struct {
 	Platform    string `json:"platform,omitempty"`
 	Version     string `json:"version,omitempty"`
 	Description string `json:"description,omitempty"`
+	Value       string `json:"value,omitempty"`
 }
 
 func findQueries(path string) (map[string][]byte, error) {
@@ -50,34 +52,61 @@ func findQueries(path string) (map[string][]byte, error) {
 	return qs, err
 }
 
-func processQueries(qb map[string][]byte) map[string]QueryMeta {
+func processQueries(qb map[string][]byte) (map[string]QueryMeta, error) {
 	qms := map[string]QueryMeta{}
 	for k, v := range qb {
 		qm := QueryMeta{}
 
 		out := []string{}
-		outTrimmed := []string{}
 		for i, line := range bytes.Split(v, []byte("\n")) {
 			s := strings.TrimSuffix(string(line), "\n")
 			before, after, hasComment := strings.Cut(s, "--")
-			if strings.HasPrefix(s, "--") {
-				if i == 0 {
-					qm.Description = strings.TrimSpace(after)
-				}
+
+			if !hasComment {
+				out = append(out, s)
 				continue
 			}
-			if hasComment {
+
+			if !strings.HasPrefix(strings.TrimSpace(s), "--") {
 				out = append(out, before)
 				continue
 			}
-			out = append(out, s)
-			outTrimmed = append(outTrimmed, strings.TrimSpace(s))
+
+			// If we are here, we have a leading comment - check for directives
+			if i == 0 {
+				qm.Description = strings.TrimSpace(after)
+			}
+
+			after = strings.TrimSpace(after)
+			directive, content, hasDirective := strings.Cut(strings.TrimSpace(after), ":")
+			if hasDirective {
+				content = strings.TrimSpace(content)
+			}
+			switch directive {
+			case "interval":
+				interval, err := strconv.Atoi(content)
+				if err != nil {
+					return qms, err
+				}
+				qm.Interval = interval
+			case "platform":
+				qm.Platform = content
+			case "version":
+				qm.Version = content
+			case "value":
+				qm.Value = content
+			}
 		}
 
 		if len(v) > 80 {
 			qm.Query = strings.TrimSpace(strings.Join(out, "\n"))
 		} else {
-			qm.Query = strings.TrimSpace(strings.Join(outTrimmed, " "))
+			// Single-line short queries
+			trimmed := []string{}
+			for _, l := range out {
+				trimmed = append(trimmed, strings.TrimSpace(l))
+			}
+			qm.Query = strings.TrimSpace(strings.Join(trimmed, " "))
 		}
 
 		if !strings.HasSuffix(qm.Query, ";") {
@@ -88,7 +117,7 @@ func processQueries(qb map[string][]byte) map[string]QueryMeta {
 		qms[name] = qm
 	}
 
-	return qms
+	return qms, nil
 }
 
 func emitPack(qs map[string]QueryMeta) ([]byte, error) {
@@ -115,7 +144,10 @@ func main() {
 		klog.Fatalf("find queries: %v", err)
 	}
 
-	qms := processQueries(qs)
+	qms, err := processQueries(qs)
+	if err != nil {
+		klog.Fatalf("process queries: %v", err)
+	}
 
 	bs, err := emitPack(qms)
 	if err != nil {
