@@ -217,7 +217,5 @@ func Parse(name string, bs []byte) (*Metadata, error) {
 		m.Platform = "windows"
 	}
 
-	klog.Infof("m: %+v", m)
-
 	return m, nil
 }

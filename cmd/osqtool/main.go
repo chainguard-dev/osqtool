@@ -7,7 +7,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"chainguard.dev/osqtool/pkg/query"
 	"github.com/hashicorp/go-multierror"
@@ -15,8 +17,21 @@ import (
 	"k8s.io/klog/v2"
 )
 
+type Config struct {
+	MaxDuration           time.Duration
+	MaxTotalRuntimePerDay time.Duration
+	MinInterval           time.Duration
+	MaxInterval           time.Duration
+}
+
 func main() {
 	outputFlag := flag.String("output", "", "Location of output")
+	minIntervalFlag := flag.Duration("max-interval", 15*time.Second, "Queries can't be scheduled more often than this")
+	maxIntervalFlag := flag.Duration("min-interval", 24*time.Hour, "Queries cant be scheduled less often than this")
+
+	maxDurationFlag := flag.Duration("max-duration", 2000*time.Millisecond, "Maximum duration (checked during --verify)")
+	maxTotalRuntimeFlag := flag.Duration("max-total-runtime-per-day", 10*time.Minute, "Maximum total runtime per day")
+	verifyFlag := flag.Bool("verify", false, "Verify the output")
 
 	flag.Parse()
 	args := flag.Args()
@@ -28,14 +43,26 @@ func main() {
 	action := args[0]
 	path := args[1]
 	var err error
+	c := Config{
+		MaxDuration:           *maxDurationFlag,
+		MaxTotalRuntimePerDay: *maxTotalRuntimeFlag,
+		MinInterval:           *minIntervalFlag,
+		MaxInterval:           *maxIntervalFlag,
+	}
+
+	if *verifyFlag || action == "verify" {
+		err = Verify(path, c)
+		if err != nil {
+			klog.Exitf("verify failed: %v", err)
+		}
+	}
 
 	switch action {
 	case "pack":
-		err = Pack(path, *outputFlag)
+		err = Pack(path, *outputFlag, c)
 	case "unpack":
-		err = Unpack(path, *outputFlag)
+		err = Unpack(path, *outputFlag, c)
 	case "verify":
-		err = Verify(path)
 	default:
 		err = fmt.Errorf("unknown action")
 	}
@@ -44,10 +71,41 @@ func main() {
 	}
 }
 
-func Pack(sourcePath string, output string) error {
+func applyConfig(mm map[string]*query.Metadata, c Config) error {
+	minSeconds := int(c.MinInterval.Seconds())
+	maxSeconds := int(c.MaxInterval.Seconds())
+
+	for name, m := range mm {
+		if m.Interval == "" {
+			klog.Infof("setting %q interval to %ds", name, maxSeconds)
+			m.Interval = strconv.Itoa(maxSeconds)
+		}
+
+		i, err := strconv.Atoi(m.Interval)
+		if err != nil {
+			return fmt.Errorf("%q: failed to parse %q: %w", name, m.Interval, err)
+		}
+
+		if i > maxSeconds {
+			klog.Infof("overriding %q interval to %ds (max)", name, maxSeconds)
+			m.Interval = strconv.Itoa(maxSeconds)
+		}
+		if i < minSeconds {
+			klog.Infof("overriding %q interval to %ds (min)", name, minSeconds)
+			m.Interval = strconv.Itoa(minSeconds)
+		}
+	}
+	return nil
+}
+
+func Pack(sourcePath string, output string, c Config) error {
 	mm, err := query.LoadFromDir(sourcePath)
 	if err != nil {
 		return fmt.Errorf("load from dir: %v", err)
+	}
+
+	if err := applyConfig(mm, c); err != nil {
+		return fmt.Errorf("apply: %w", err)
 	}
 
 	bs, err := query.RenderPack(mm)
@@ -63,7 +121,7 @@ func Pack(sourcePath string, output string) error {
 	return os.WriteFile(output, bs, 0o600)
 }
 
-func Unpack(sourcePath string, destPath string) error {
+func Unpack(sourcePath string, destPath string, c Config) error {
 	if destPath == "" {
 		destPath = "."
 	}
@@ -71,6 +129,10 @@ func Unpack(sourcePath string, destPath string) error {
 	p, err := query.LoadPack(sourcePath)
 	if err != nil {
 		return fmt.Errorf("load pack: %v", err)
+	}
+
+	if err := applyConfig(p.Queries, c); err != nil {
+		return fmt.Errorf("apply: %w", err)
 	}
 
 	err = query.SaveToDirectory(p.Queries, destPath)
@@ -82,7 +144,7 @@ func Unpack(sourcePath string, destPath string) error {
 	return nil
 }
 
-func Verify(path string) error {
+func Verify(path string, c Config) error {
 	s, err := os.Stat(path)
 	if err != nil {
 		return fmt.Errorf("stat: %w", err)
@@ -110,9 +172,15 @@ func Verify(path string) error {
 		mm[m.Name] = m
 	}
 
+	if err := applyConfig(mm, c); err != nil {
+		return fmt.Errorf("apply: %w", err)
+	}
+
 	verified := 0
 	skipped := 0
 	errored := 0
+
+	totalRuntime := time.Duration(0)
 
 	for name, m := range mm {
 		klog.Infof("Verifying %q ...", name)
@@ -122,6 +190,12 @@ func Verify(path string) error {
 			err = multierror.Append(err, fmt.Errorf("%s: %w", name, verr))
 			errored++
 			continue
+		}
+
+		totalRuntime += vf.Elapsed
+
+		if vf.Elapsed > c.MaxDuration {
+			err = multierror.Append(err, fmt.Errorf("%q: %s exceeds maximum duration of %s", name, vf.Elapsed, c.MaxDuration))
 		}
 
 		if vf.IncompatiblePlatform != "" {
@@ -135,6 +209,10 @@ func Verify(path string) error {
 	}
 
 	klog.Infof("%d queries found: %d verified, %d errored, %d skipped", len(mm), verified, errored, skipped)
+	klog.Infof("total runtime: %s", totalRuntime)
+	if totalRuntime > c.MaxTotalRuntimePerDay {
+		err = multierror.Append(err, fmt.Errorf("total runtime per day (%s) exceeds %s", totalRuntime, c.MaxTotalRuntimePerDay))
+	}
 
 	if verified == 0 {
 		err = multierror.Append(err, fmt.Errorf("0 queries were verified"))
