@@ -24,3 +24,29 @@ func TestLoad(t *testing.T) {
 		t.Errorf("Load() got = %v, want %v\n diff: %s", got, want, diff)
 	}
 }
+
+func TestRender(t *testing.T) {
+	m := &Metadata{
+		Name:        "xprotect-reports",
+		Query:       "SELECT * FROM xprotect_reports;",
+		Interval:    1200,
+		Platform:    "darwin",
+		Description: "Returns a list of malware matches from macOS XProtect",
+	}
+
+	got, err := Render(m)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	want := `-- Returns a list of malware matches from macOS XProtect
+--
+-- interval: 1200
+-- platform: darwin
+
+SELECT * FROM xprotect_reports;
+`
+	if diff := cmp.Diff(got, want); diff != "" {
+		t.Errorf("Load() got = %v, want %v\n diff: %s", got, want, diff)
+	}
+}

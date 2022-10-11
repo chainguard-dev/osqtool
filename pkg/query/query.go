@@ -11,18 +11,27 @@ import (
 	"k8s.io/klog/v2"
 )
 
-type Metadata struct {
-	sourcePath string
+// shortQueryLen is the cut-off for when to render a query within a single line.
+const shortQueryLen = 80
 
-	Name            string `json:"-"`
-	Query           string `json:"query"`
-	Interval        int    `json:"interval,omitempty"`
-	Shard           int    `json:"shard,omitempty"`
-	Platform        string `json:"platform,omitempty"`
-	Version         string `json:"version,omitempty"`
-	Description     string `json:"description,omitempty"`
-	LongDescription string `json:"long_description,omitempty"` // not an official field
-	Value           string `json:"value,omitempty"`
+type Metadata struct {
+	// Refer to q.value.HasMember() calls in osquery/config/packs.cpp
+	Query       string `json:"query"`
+	Interval    int    `json:"interval,omitempty"`
+	Shard       int    `json:"shard,omitempty"`
+	Platform    string `json:"platform,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Description string `json:"description,omitempty"`
+
+	Snapshot bool `json:"snapshot,omitempty"`
+	Removed  bool `json:"removed,omitempty"`
+	DenyList bool `json:"denylist,omitempty"`
+
+	// Custom fields
+	ExtendedDescription string `json:"extended_description,omitempty"` // not an official field
+	Value               string `json:"value,omitempty"`                // not an official field, but used in packs
+	Name                string `json:"-"`
+	sourcePath          string
 }
 
 // LoadFromDir recursively loads osquery queries from a directory.
@@ -63,6 +72,50 @@ func Load(path string) (*Metadata, error) {
 	m.sourcePath = path
 	m.Name = strings.ReplaceAll(filepath.Base(path), ".sql", "")
 	return m, nil
+}
+
+// Render renders query metadata into a string
+func Render(m *Metadata) (string, error) {
+	lines := []string{}
+
+	if m.Description != "" {
+		lines = append(lines, fmt.Sprintf("-- %s", m.Description))
+	}
+
+	// TODO: only add divider when necessary
+	lines = append(lines, "--")
+
+	if m.ExtendedDescription != "" {
+		for _, ed := range strings.Split(m.ExtendedDescription, "\n") {
+			lines = append(lines, fmt.Sprintf("-- %s", ed))
+		}
+		lines = append(lines, "-- ")
+	}
+
+	if m.Interval > 0 {
+		lines = append(lines, fmt.Sprintf("-- interval: %d", m.Interval))
+	}
+
+	if m.Platform != "" {
+		lines = append(lines, fmt.Sprintf("-- platform: %s", m.Platform))
+	}
+
+	if m.Shard > 0 {
+		lines = append(lines, fmt.Sprintf("-- shard: %d", m.Shard))
+	}
+
+	if m.Value != "" {
+		lines = append(lines, fmt.Sprintf("-- value: %s", m.Value))
+	}
+
+	if m.Version != "" {
+		lines = append(lines, fmt.Sprintf("-- version: %s", m.Version))
+	}
+
+	lines = append(lines, "")
+	lines = append(lines, m.Query)
+
+	return strings.Join(lines, "\n") + "\n", nil
 }
 
 // Parse parses query content and returns a Metadata object.
@@ -118,7 +171,7 @@ func Parse(bs []byte) (*Metadata, error) {
 		}
 	}
 
-	if len(bs) > 80 {
+	if len(strings.Join(out, "")) > shortQueryLen {
 		m.Query = strings.TrimSpace(strings.Join(out, "\n"))
 	} else {
 		// Single-line short queries

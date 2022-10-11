@@ -39,6 +39,10 @@ linters-settings:
   exhaustive:
     default-signifies-exhaustive: true
 
+  funlen:
+    lines: 100
+    statements: 50
+
   nestif:
     min-complexity: 8
 
@@ -115,6 +119,7 @@ linters:
     - exhaustive
     - exportloopref
     - forcetypeassert
+    - funlen
     - gocognit
     - goconst
     - gocritic
@@ -126,6 +131,7 @@ linters:
     - goimports
     - goprintffuncname
     - gosimple
+    - gosec
     - govet
     - importas
     - ineffassign
@@ -156,9 +162,9 @@ linters:
 
   # Disabled linters, due to being misaligned with Go practices
   # - exhaustivestruct
-  # - gochecknoglobals
-  # - gochecknoinits
-  # - goconst
+    - gochecknoglobals
+    - gochecknoinits
+    - goconst
   # - godox
   # - goerr113
   # - gomnd
