@@ -60,7 +60,11 @@ func LoadPack(path string) (*Pack, error) {
 		return nil, fmt.Errorf("unmarshal: %v", err)
 	}
 
+	// Final repairs
 	for _, v := range pack.Queries {
+		if pack.Platform != "" && v.Platform == "" {
+			v.Platform = pack.Platform
+		}
 		v.Query = strings.ReplaceAll(v.Query, "\\n", "\n")
 	}
 

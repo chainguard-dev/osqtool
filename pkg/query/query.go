@@ -31,7 +31,6 @@ type Metadata struct {
 	ExtendedDescription string `json:"extended_description,omitempty"` // not an official field
 	Value               string `json:"value,omitempty"`                // not an official field, but used in packs
 	Name                string `json:"-"`
-	sourcePath          string
 }
 
 // LoadFromDir recursively loads osquery queries from a directory.
@@ -64,13 +63,12 @@ func Load(path string) (*Metadata, error) {
 		return nil, fmt.Errorf("read: %v", err)
 	}
 
-	m, err := Parse(bs)
+	name := strings.ReplaceAll(filepath.Base(path), ".sql", "")
+	m, err := Parse(name, bs)
 	if err != nil {
 		return nil, fmt.Errorf("parse: %v", err)
 	}
 
-	m.sourcePath = path
-	m.Name = strings.ReplaceAll(filepath.Base(path), ".sql", "")
 	return m, nil
 }
 
@@ -119,13 +117,28 @@ func Render(m *Metadata) (string, error) {
 }
 
 // Parse parses query content and returns a Metadata object.
-func Parse(bs []byte) (*Metadata, error) {
-	m := &Metadata{}
+func Parse(name string, bs []byte) (*Metadata, error) {
+	// NOTE: The 'name' can be as simple as the file base path
+	m := &Metadata{
+		Name: name,
+	}
 
 	out := []string{}
 	for i, line := range bytes.Split(bs, []byte("\n")) {
 		s := strings.TrimSuffix(string(line), "\n")
+
+		// Wait a minute buckaroo, are you really trying to parse SQL? Have you considered --flags?
+		// This is going to require work.
 		before, after, hasComment := strings.Cut(s, "--")
+
+		// " --x"
+		if strings.Count(before, `"`)%2 == 1 && strings.Count(after, `"`)%2 == 1 {
+			hasComment = false
+		}
+		// ' --x'
+		if strings.Count(before, `'`)%2 == 1 && strings.Count(after, `'`)%2 == 1 {
+			hasComment = false
+		}
 
 		if !hasComment {
 			out = append(out, s)
@@ -181,6 +194,30 @@ func Parse(bs []byte) (*Metadata, error) {
 	if !strings.HasSuffix(m.Query, ";") {
 		m.Query += ";"
 	}
+
+	if m.Platform != "" {
+		return m, nil
+	}
+
+	// If the platform field isn't filled in, try to guess via the name
+	switch {
+	case strings.HasSuffix(m.Name, "linux"):
+		m.Platform = "linux"
+	case strings.HasSuffix(m.Name, "macos"):
+		m.Platform = "darwin"
+	case strings.HasSuffix(m.Name, "darwin"):
+		m.Platform = "darwin"
+	case strings.HasSuffix(m.Name, "posix"):
+		m.Platform = "posix"
+	case strings.HasSuffix(m.Name, "unix"):
+		m.Platform = "posix"
+	case strings.HasSuffix(m.Name, "windows"):
+		m.Platform = "windows"
+	case strings.HasSuffix(m.Name, "win"):
+		m.Platform = "windows"
+	}
+
+	klog.Infof("m: %+v", m)
 
 	return m, nil
 }
