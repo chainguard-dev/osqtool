@@ -3,7 +3,6 @@ package query
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -26,7 +25,7 @@ type Metadata struct {
 	Value           string `json:"value,omitempty"`
 }
 
-// LoadFromDir recursively loads osquery queries from a directory
+// LoadFromDir recursively loads osquery queries from a directory.
 func LoadFromDir(path string) (map[string]*Metadata, error) {
 	mm := map[string]*Metadata{}
 
@@ -49,9 +48,9 @@ func LoadFromDir(path string) (map[string]*Metadata, error) {
 	return mm, err
 }
 
-// Load loads a query from a file
+// Load loads a query from a file.
 func Load(path string) (*Metadata, error) {
-	bs, err := ioutil.ReadFile(path)
+	bs, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read: %v", err)
 	}
@@ -66,7 +65,7 @@ func Load(path string) (*Metadata, error) {
 	return m, nil
 }
 
-// Parse parses query content and returns a Metadata object
+// Parse parses query content and returns a Metadata object.
 func Parse(bs []byte) (*Metadata, error) {
 	m := &Metadata{}
 
@@ -131,7 +130,7 @@ func Parse(bs []byte) (*Metadata, error) {
 	}
 
 	if !strings.HasSuffix(m.Query, ";") {
-		m.Query = m.Query + ";"
+		m.Query += ";"
 	}
 
 	return m, nil

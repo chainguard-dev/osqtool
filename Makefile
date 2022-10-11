@@ -1,3 +1,4 @@
+
 # BEGIN: lint-install .
 # http://github.com/tinkerbell/lint-install
 
@@ -20,7 +21,7 @@ LINTERS :=
 FIXERS :=
 
 GOLANGCI_LINT_CONFIG := $(LINT_ROOT)/.golangci.yml
-GOLANGCI_LINT_VERSION ?= v1.47.2
+GOLANGCI_LINT_VERSION ?= v1.50.0
 GOLANGCI_LINT_BIN := $(LINT_ROOT)/out/linters/golangci-lint-$(GOLANGCI_LINT_VERSION)-$(LINT_ARCH)
 $(GOLANGCI_LINT_BIN):
 	mkdir -p $(LINT_ROOT)/out/linters

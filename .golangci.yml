@@ -106,7 +106,6 @@ linters:
     - asciicheck
     - bodyclose
     - cyclop
-    - deadcode
     - dogsled
     - dupl
     - durationcheck
@@ -128,7 +127,6 @@ linters:
     - goprintffuncname
     - gosimple
     - govet
-    - ifshort
     - importas
     - ineffassign
     - makezero
@@ -142,10 +140,10 @@ linters:
     # disabling for the initial iteration of the linting tool
     # - promlinter
     - revive
-    - rowserrcheck
-    - sqlclosecheck
+    # - rowserrcheck - disabled because of generics, https://github.com/golangci/golangci-lint/issues/2649
+    # - sqlclosecheck - disabled because of generics, https://github.com/golangci/golangci-lint/issues/2649
     - staticcheck
-    - structcheck
+    # - structcheck - disabled because of generics, https://github.com/golangci/golangci-lint/issues/2649
     - stylecheck
     - thelper
     - tparallel
@@ -153,8 +151,7 @@ linters:
     - unconvert
     - unparam
     - unused
-    - varcheck
-    - wastedassign
+    # - wastedassign - disabled because of generics, https://github.com/golangci/golangci-lint/issues/2649
     - whitespace
 
   # Disabled linters, due to being misaligned with Go practices
