@@ -16,7 +16,7 @@ func TestLoad(t *testing.T) {
 	want := &Metadata{
 		Name:        "xprotect-reports",
 		Query:       "SELECT\n  *\nFROM\n  xprotect_reports;",
-		Interval:    1200,
+		Interval:    "1200",
 		Description: "Returns a list of malware matches from macOS XProtect",
 	}
 
@@ -29,7 +29,7 @@ func TestRender(t *testing.T) {
 	m := &Metadata{
 		Name:        "xprotect-reports",
 		Query:       "SELECT * FROM xprotect_reports;",
-		Interval:    1200,
+		Interval:    "1200",
 		Platform:    "darwin",
 		Description: "Returns a list of malware matches from macOS XProtect",
 	}

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"k8s.io/klog/v2"
 )
@@ -44,15 +46,28 @@ func LoadPack(path string) (*Pack, error) {
 		return nil, fmt.Errorf("read: %v", err)
 	}
 
+	// workaround: invalid character '\n' in string escape code
+	// replace trailing \<newline> with \<escaped newline>
+	bs = bytes.ReplaceAll(bs, []byte("\\\n"), []byte("\\\\n"))
+
+	// workaround: cannot unmarshal number into Go struct field Metadata.queries.interval of type string
+	nakedInterval := regexp.MustCompile(`"interval"\s*:\s*(\d+),`)
+	bs = nakedInterval.ReplaceAll(bs, []byte("\"interval\": \"$1\","))
+	klog.Infof("bytes: %s", bs)
+
 	err = json.Unmarshal(bs, pack)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshal: %v", err)
 	}
 
+	for _, v := range pack.Queries {
+		v.Query = strings.ReplaceAll(v.Query, "\\n", "\n")
+	}
+
 	return pack, nil
 }
 
-// SaveToDirectories saves a map of queries into a directory
+// SaveToDirectories saves a map of queries into a directory.
 func SaveToDirectory(mm map[string]*Metadata, destination string) error {
 	for name, m := range mm {
 		s, err := Render(m)

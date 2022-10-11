@@ -17,7 +17,7 @@ const shortQueryLen = 80
 type Metadata struct {
 	// Refer to q.value.HasMember() calls in osquery/config/packs.cpp
 	Query       string `json:"query"`
-	Interval    int    `json:"interval,omitempty"`
+	Interval    string `json:"interval,omitempty"`
 	Shard       int    `json:"shard,omitempty"`
 	Platform    string `json:"platform,omitempty"`
 	Version     string `json:"version,omitempty"`
@@ -74,7 +74,7 @@ func Load(path string) (*Metadata, error) {
 	return m, nil
 }
 
-// Render renders query metadata into a string
+// Render renders query metadata into a string.
 func Render(m *Metadata) (string, error) {
 	lines := []string{}
 
@@ -92,8 +92,8 @@ func Render(m *Metadata) (string, error) {
 		lines = append(lines, "-- ")
 	}
 
-	if m.Interval > 0 {
-		lines = append(lines, fmt.Sprintf("-- interval: %d", m.Interval))
+	if m.Interval != "" {
+		lines = append(lines, fmt.Sprintf("-- interval: %s", m.Interval))
 	}
 
 	if m.Platform != "" {
@@ -151,11 +151,7 @@ func Parse(bs []byte) (*Metadata, error) {
 		// See https://github.com/osquery/osquery/blob/4ee0be8000d59742d4fe86d2cb0a6241b79d11ff/osquery/config/packs.cpp
 		switch directive {
 		case "interval":
-			interval, err := strconv.Atoi(content)
-			if err != nil {
-				return nil, err
-			}
-			m.Interval = interval
+			m.Interval = content
 		case "platform":
 			m.Platform = content
 		case "version":
