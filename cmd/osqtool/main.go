@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"chainguard.dev/osqtool/pkg/query"
+	"github.com/chainguard-dev/osqtool/pkg/query"
 	"github.com/hashicorp/go-multierror"
 
 	"k8s.io/klog/v2"

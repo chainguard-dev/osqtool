@@ -1,4 +1,4 @@
-module chainguard.dev/osqtool
+module github.com/chainguard-dev/osqtool
 
 go 1.19
 

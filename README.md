@@ -4,6 +4,14 @@ A swiss-army tool for manipulating [osquery](https://osquery.io/) query packs.
 
 ![osqtool logo](images/logo-small.png?raw=true "osqtool logo")
 
+## Installation
+
+With [Go](https://go.dev/) v1.19+ installed, run:
+
+```shell
+go install github.com/chainguard-dev/osqtool/cmd/osqtool@latest
+```
+
 ## Usage
 
 osqtool supports 4 commands:
