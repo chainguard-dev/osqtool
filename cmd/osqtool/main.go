@@ -43,7 +43,7 @@ func main() {
 	args := flag.Args()
 
 	if len(args) < 2 {
-		klog.Exitf("usage: osqtool [pack|unpack] <path>")
+		klog.Exitf("usage: osqtool [apply|pack|unpack|verify] <path>")
 	}
 
 	action := args[0]
@@ -226,7 +226,7 @@ func Verify(path string, c Config) error {
 		if err != nil {
 			return fmt.Errorf("load from dir: %w", err)
 		}
-	case strings.HasSuffix(path, ".conf"):
+	case strings.Contains(path, ".conf"):
 		p, err := query.LoadPack(path)
 		if err != nil {
 			return fmt.Errorf("load from dir: %w", err)
