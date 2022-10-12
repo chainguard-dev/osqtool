@@ -22,14 +22,20 @@ type Config struct {
 	MaxTotalRuntimePerDay time.Duration
 	MinInterval           time.Duration
 	MaxInterval           time.Duration
+	DefaultInterval       time.Duration
+	Exclude               []string
+	Platforms             []string
 }
 
 func main() {
 	outputFlag := flag.String("output", "", "Location of output")
 	minIntervalFlag := flag.Duration("max-interval", 15*time.Second, "Queries can't be scheduled more often than this")
+	defaultIntervalFlag := flag.Duration("default-interval", 1*time.Hour, "Interval to use for queries which do not specify one")
 	maxIntervalFlag := flag.Duration("min-interval", 24*time.Hour, "Queries cant be scheduled less often than this")
+	excludeFlag := flag.String("exclude", "", "Comma-separated list of queries to exclude")
+	platformsFlag := flag.String("platforms", "", "Comma-separated list of platforms to include")
 
-	maxDurationFlag := flag.Duration("max-duration", 2000*time.Millisecond, "Maximum duration (checked during --verify)")
+	maxDurationFlag := flag.Duration("max-duration", 4000*time.Millisecond, "Maximum duration (checked during --verify)")
 	maxTotalRuntimeFlag := flag.Duration("max-total-runtime-per-day", 10*time.Minute, "Maximum total runtime per day")
 	verifyFlag := flag.Bool("verify", false, "Verify the output")
 
@@ -48,6 +54,9 @@ func main() {
 		MaxTotalRuntimePerDay: *maxTotalRuntimeFlag,
 		MinInterval:           *minIntervalFlag,
 		MaxInterval:           *maxIntervalFlag,
+		DefaultInterval:       *defaultIntervalFlag,
+		Exclude:               strings.Split(*excludeFlag, ","),
+		Platforms:             strings.Split(*platformsFlag, ","),
 	}
 
 	if *verifyFlag || action == "verify" {
@@ -72,13 +81,42 @@ func main() {
 }
 
 func applyConfig(mm map[string]*query.Metadata, c Config) error {
+	klog.Infof("applying config: %+v", c)
 	minSeconds := int(c.MinInterval.Seconds())
 	maxSeconds := int(c.MaxInterval.Seconds())
+	defaultInterval := int(c.DefaultInterval.Seconds())
+	excludeMap := map[string]bool{}
+	for _, v := range c.Exclude {
+		if v == "" {
+			continue
+		}
+		excludeMap[v] = true
+	}
+
+	platformsMap := map[string]bool{}
+	for _, v := range c.Platforms {
+		if v == "" {
+			continue
+		}
+
+		platformsMap[v] = true
+	}
 
 	for name, m := range mm {
+		if excludeMap[name] {
+			klog.Infof("Skipping %s - excluded by --exclude", name)
+			delete(mm, name)
+			continue
+		}
+		if len(platformsMap) > 0 && m.Platform != "" && !platformsMap[m.Platform] {
+			klog.Infof("Skipping %s - %q not listed in --platforms", name, m.Platform)
+			delete(mm, name)
+			continue
+		}
+
 		if m.Interval == "" {
-			klog.Infof("setting %q interval to %ds", name, maxSeconds)
-			m.Interval = strconv.Itoa(maxSeconds)
+			klog.Infof("setting %q interval to %ds", name, defaultInterval)
+			m.Interval = strconv.Itoa(defaultInterval)
 		}
 
 		i, err := strconv.Atoi(m.Interval)
@@ -108,6 +146,7 @@ func Pack(sourcePath string, output string, c Config) error {
 		return fmt.Errorf("apply: %w", err)
 	}
 
+	klog.Infof("Packing %d queries into %s ...", len(mm), output)
 	bs, err := query.RenderPack(mm)
 	if err != nil {
 		return fmt.Errorf("render: %v", err)

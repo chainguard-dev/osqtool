@@ -12,6 +12,8 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// bug: '' in spotlight and unexpected dev-opener
+
 type Pack struct {
 	Queries   map[string]*Metadata `json:"queries,omitempty"`
 	Discovery map[string]*Metadata `json:"discovery,omitempty"`
@@ -32,8 +34,10 @@ func RenderPack(qs map[string]*Metadata) ([]byte, error) {
 	}
 
 	// hand massaging the query part for aesthetics
+	// out = bytes.ReplaceAll(out, []byte(`\"`), []byte("'"))
 	out = bytes.ReplaceAll(out, []byte(`\u003e`), []byte(">"))
 	out = bytes.ReplaceAll(out, []byte(`\u003c`), []byte("<"))
+	out = bytes.ReplaceAll(out, []byte(`\u0026`), []byte("&"))
 	return bytes.ReplaceAll(out, []byte(`\n`), []byte(" \\\n    ")), nil
 }
 

@@ -52,6 +52,29 @@ Here's the example output:
 ...
 ```
 
+When generating packs, there are a number of flags you can use to tune the output:
+
+```
+  -default-interval duration
+     Interval to use for queries which do not specify one (default 1h0m0s)
+  -exclude string
+     Comma-separated list of queries to exclude
+  -max-duration duration
+     Maximum duration (checked during --verify) (default 4s)
+  -max-interval duration
+     Queries can't be scheduled more often than this (default 15s)
+  -max-total-runtime-per-day duration
+     Maximum total runtime per day (default 10m0s)
+  -min-interval duration
+     Queries cant be scheduled less often than this (default 24h0m0s)
+  -output string
+     Location of output
+  -platforms string
+     Comma-separated list of platforms to include
+  -verify
+     Verify the output
+```
+
 ### Verify
 
 Verify that the queries are valid in a pack, SQL file, or directory of SQL files

@@ -12,7 +12,7 @@ import (
 )
 
 // shortQueryLen is the cut-off for when to render a query within a single line.
-const shortQueryLen = 80
+const shortQueryLen = 120
 
 type Metadata struct {
 	// Refer to q.value.HasMember() calls in osquery/config/packs.cpp
