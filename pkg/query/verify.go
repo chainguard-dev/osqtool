@@ -36,7 +36,10 @@ func Verify(m *Metadata) (*VerifyResult, error) {
 
 	go func() {
 		defer stdin.Close()
-		io.WriteString(stdin, m.Query)
+		_, err := io.WriteString(stdin, m.Query)
+		if err != nil {
+			klog.Errorf("failed tos end data to osquery: %w", err)
+		}
 	}()
 
 	start := time.Now()

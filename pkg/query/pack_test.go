@@ -15,9 +15,10 @@ func TestLoad(t *testing.T) {
 
 	want := &Metadata{
 		Name:        "xprotect-reports",
-		Query:       "SELECT\n  *\nFROM\n  xprotect_reports;",
+		Query:       "SELECT * FROM xprotect_reports;",
 		Interval:    "1200",
 		Description: "Returns a list of malware matches from macOS XProtect",
+		Platform:    "darwin",
 	}
 
 	if diff := cmp.Diff(got, want, cmpopts.IgnoreUnexported(Metadata{})); diff != "" {

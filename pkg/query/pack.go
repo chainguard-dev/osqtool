@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -50,7 +50,7 @@ func LoadPack(path string) (*Pack, error) {
 
 	if path == "-" {
 		r := bufio.NewReader(os.Stdin)
-		bs, err = ioutil.ReadAll(r)
+		bs, err = io.ReadAll(r)
 	} else {
 		bs, err = os.ReadFile(path)
 	}
