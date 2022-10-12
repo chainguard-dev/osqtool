@@ -48,7 +48,7 @@ func Verify(m *Metadata) (*VerifyResult, error) {
 
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("%s [%w]: %s", cmd, err, ee.Stderr)
+			return nil, fmt.Errorf("%s [%w]: %s\nstdin: %s", cmd, err, ee.Stderr, m.Query)
 		}
 		return nil, fmt.Errorf("%s: %w", cmd, err)
 	}
