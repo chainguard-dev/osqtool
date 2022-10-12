@@ -1,9 +1,11 @@
 package query
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,8 +28,7 @@ type Pack struct {
 }
 
 // RenderPack renders an osquery pack file from a set of queries.
-func RenderPack(qs map[string]*Metadata) ([]byte, error) {
-	pack := &Pack{Queries: qs}
+func RenderPack(pack *Pack) ([]byte, error) {
 	out, err := json.MarshalIndent(pack, "", "  ")
 	if err != nil {
 		return out, err
@@ -44,8 +45,15 @@ func RenderPack(qs map[string]*Metadata) ([]byte, error) {
 // LoadPack loads and parses an osquery pack file.
 func LoadPack(path string) (*Pack, error) {
 	pack := &Pack{}
+	var err error
+	var bs []byte
 
-	bs, err := os.ReadFile(path)
+	if path == "-" {
+		r := bufio.NewReader(os.Stdin)
+		bs, err = ioutil.ReadAll(r)
+	} else {
+		bs, err = os.ReadFile(path)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read: %v", err)
 	}

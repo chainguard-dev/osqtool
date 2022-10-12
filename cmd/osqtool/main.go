@@ -67,6 +67,8 @@ func main() {
 	}
 
 	switch action {
+	case "apply":
+		err = Apply(path, *outputFlag, c)
 	case "pack":
 		err = Pack(path, *outputFlag, c)
 	case "unpack":
@@ -136,18 +138,18 @@ func applyConfig(mm map[string]*query.Metadata, c Config) error {
 	return nil
 }
 
-func Pack(sourcePath string, output string, c Config) error {
-	mm, err := query.LoadFromDir(sourcePath)
+// Apply applies programattic changes to an osquery pack.
+func Apply(sourcePath string, output string, c Config) error {
+	p, err := query.LoadPack(sourcePath)
 	if err != nil {
-		return fmt.Errorf("load from dir: %v", err)
+		return fmt.Errorf("load pack: %v", err)
 	}
 
-	if err := applyConfig(mm, c); err != nil {
+	if err := applyConfig(p.Queries, c); err != nil {
 		return fmt.Errorf("apply: %w", err)
 	}
 
-	klog.Infof("Packing %d queries into %s ...", len(mm), output)
-	bs, err := query.RenderPack(mm)
+	bs, err := query.RenderPack(p)
 	if err != nil {
 		return fmt.Errorf("render: %v", err)
 	}
@@ -160,6 +162,32 @@ func Pack(sourcePath string, output string, c Config) error {
 	return os.WriteFile(output, bs, 0o600)
 }
 
+// Pack creates an osquery pack from a recursive directory of SQL files
+func Pack(sourcePath string, output string, c Config) error {
+	mm, err := query.LoadFromDir(sourcePath)
+	if err != nil {
+		return fmt.Errorf("load from dir: %v", err)
+	}
+
+	if err := applyConfig(mm, c); err != nil {
+		return fmt.Errorf("apply: %w", err)
+	}
+
+	klog.Infof("Packing %d queries into %s ...", len(mm), output)
+	bs, err := query.RenderPack(&query.Pack{Queries: mm})
+	if err != nil {
+		return fmt.Errorf("render: %v", err)
+	}
+
+	if output == "" {
+		_, err = fmt.Println(string(bs))
+		return err
+	}
+
+	return os.WriteFile(output, bs, 0o600)
+}
+
+// Unpack extracts SQL files from an osquery pack
 func Unpack(sourcePath string, destPath string, c Config) error {
 	if destPath == "" {
 		destPath = "."
@@ -183,6 +211,7 @@ func Unpack(sourcePath string, destPath string, c Config) error {
 	return nil
 }
 
+// Verify verifies the queries within a directory or pack
 func Verify(path string, c Config) error {
 	s, err := os.Stat(path)
 	if err != nil {

@@ -4,6 +4,38 @@ Tool to manage osquery packs and queries
 
 ## Usage
 
+### Apply
+
+Want to take an osquery pack from the internet, but make changes to it programatically? osqtool has you covered:
+
+```shell
+curl https://github.com/osquery/osquery/blob/master/packs/it-compliance.conf \
+  | osqtool --min-interval=8h --platforms linux,posix --exclude os_version apply
+```
+
+Here are the options that are available to this and other commands:
+
+```
+  -default-interval duration
+     Interval to use for queries which do not specify one (default 1h0m0s)
+  -exclude string
+     Comma-separated list of queries to exclude
+  -max-duration duration
+     Maximum duration (checked during --verify) (default 4s)
+  -max-interval duration
+     Queries can't be scheduled more often than this (default 15s)
+  -max-total-runtime-per-day duration
+     Maximum total runtime per day (default 10m0s)
+  -min-interval duration
+     Queries cant be scheduled less often than this (default 24h0m0s)
+  -output string
+     Location of output
+  -platforms string
+     Comma-separated list of platforms to include
+  -verify
+     Verify the output
+```
+
 ### Unpack
 
 Extract an osquery pack into a directory of SQL files:
