@@ -17,6 +17,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// A struct representation of our flags
 type Config struct {
 	MaxDuration           time.Duration
 	MaxTotalRuntimePerDay time.Duration
@@ -25,6 +26,7 @@ type Config struct {
 	DefaultInterval       time.Duration
 	Exclude               []string
 	Platforms             []string
+	SingleQuotes          bool
 }
 
 func main() {
@@ -34,6 +36,8 @@ func main() {
 	maxIntervalFlag := flag.Duration("min-interval", 24*time.Hour, "Queries cant be scheduled less often than this")
 	excludeFlag := flag.String("exclude", "", "Comma-separated list of queries to exclude")
 	platformsFlag := flag.String("platforms", "", "Comma-separated list of platforms to include")
+
+	singleQuotesFlag := flag.Bool("single-quotes", false, "Render double quotes as single quotes (may corrupt queries)")
 
 	maxDurationFlag := flag.Duration("max-duration", 4000*time.Millisecond, "Maximum duration (checked during --verify)")
 	maxTotalRuntimeFlag := flag.Duration("max-total-runtime-per-day", 10*time.Minute, "Maximum total runtime per day")
@@ -57,6 +61,7 @@ func main() {
 		DefaultInterval:       *defaultIntervalFlag,
 		Exclude:               strings.Split(*excludeFlag, ","),
 		Platforms:             strings.Split(*platformsFlag, ","),
+		SingleQuotes:          *singleQuotesFlag,
 	}
 
 	if *verifyFlag || action == "verify" {
@@ -149,7 +154,7 @@ func Apply(sourcePath string, output string, c Config) error {
 		return fmt.Errorf("apply: %w", err)
 	}
 
-	bs, err := query.RenderPack(p)
+	bs, err := query.RenderPack(p, &query.RenderConfig{SingleQuotes: c.SingleQuotes})
 	if err != nil {
 		return fmt.Errorf("render: %v", err)
 	}
@@ -174,7 +179,7 @@ func Pack(sourcePath string, output string, c Config) error {
 	}
 
 	klog.Infof("Packing %d queries into %s ...", len(mm), output)
-	bs, err := query.RenderPack(&query.Pack{Queries: mm})
+	bs, err := query.RenderPack(&query.Pack{Queries: mm}, &query.RenderConfig{SingleQuotes: c.SingleQuotes})
 	if err != nil {
 		return fmt.Errorf("render: %v", err)
 	}

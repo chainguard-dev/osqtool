@@ -27,15 +27,22 @@ type Pack struct {
 	Oncall   string `json:"oncall,omitempty"`
 }
 
+type RenderConfig struct {
+	SingleQuotes bool
+}
+
 // RenderPack renders an osquery pack file from a set of queries.
-func RenderPack(pack *Pack) ([]byte, error) {
+func RenderPack(pack *Pack, c *RenderConfig) ([]byte, error) {
 	out, err := json.MarshalIndent(pack, "", "  ")
 	if err != nil {
 		return out, err
 	}
 
-	// hand massaging the query part for aesthetics
-	// out = bytes.ReplaceAll(out, []byte(`\"`), []byte("'"))
+	// This does not yet handle the case where someone double-quote:
+	// a single quote, for example: mdfind.query="item == 'latest'"
+	if c.SingleQuotes {
+		out = bytes.ReplaceAll(out, []byte(`\"`), []byte("'"))
+	}
 	out = bytes.ReplaceAll(out, []byte(`\u003e`), []byte(">"))
 	out = bytes.ReplaceAll(out, []byte(`\u003c`), []byte("<"))
 	out = bytes.ReplaceAll(out, []byte(`\u0026`), []byte("&"))
