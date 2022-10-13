@@ -1,6 +1,8 @@
 # osqtool
 
-A swiss-army tool for manipulating [osquery](https://osquery.io/) query packs.
+[![experimental](http://badges.github.io/stability-badges/dist/experimental.svg)](http://github.com/badges/stability-badges)
+
+A swiss-army tool for creating and manipulating [osquery](https://osquery.io/) query packs.
 
 ![osqtool logo](images/logo-small.png?raw=true "osqtool logo")
 
