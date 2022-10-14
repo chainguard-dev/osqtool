@@ -28,9 +28,10 @@ type Metadata struct {
 	DenyList bool `json:"denylist,omitempty"`
 
 	// Custom fields
-	ExtendedDescription string `json:"extended_description,omitempty"` // not an official field
-	Value               string `json:"value,omitempty"`                // not an official field, but used in packs
-	Name                string `json:"-"`
+	ExtendedDescription string   `json:"extended_description,omitempty"` // not an official field
+	Value               string   `json:"value,omitempty"`                // not an official field, but used in packs
+	Name                string   `json:"-"`
+	Tags                []string `json:"-"`
 }
 
 // LoadFromDir recursively loads osquery queries from a directory.
@@ -169,6 +170,8 @@ func Parse(name string, bs []byte) (*Metadata, error) {
 			m.Platform = content
 		case "version":
 			m.Version = content
+		case "tags":
+			m.Tags = strings.Split(content, " ")
 		case "shard":
 			shard, err := strconv.Atoi(content)
 			if err != nil {

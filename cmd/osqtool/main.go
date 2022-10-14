@@ -17,13 +17,14 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// A struct representation of our flags
+// A struct representation of our flags.
 type Config struct {
 	MaxDuration           time.Duration
 	MaxTotalRuntimePerDay time.Duration
 	MinInterval           time.Duration
 	MaxInterval           time.Duration
 	DefaultInterval       time.Duration
+	TagIntervals          []string
 	Exclude               []string
 	Platforms             []string
 	SingleQuotes          bool
@@ -33,6 +34,7 @@ func main() {
 	outputFlag := flag.String("output", "", "Location of output")
 	minIntervalFlag := flag.Duration("max-interval", 15*time.Second, "Queries can't be scheduled more often than this")
 	defaultIntervalFlag := flag.Duration("default-interval", 1*time.Hour, "Interval to use for queries which do not specify one")
+	tagIntervalsFlag := flag.String("tag-intervals", "transient=5m,postmortem=6h,continuous=15s,often=x/4,seldom=2x", "modifiers to the default-interval based on query tags")
 	maxIntervalFlag := flag.Duration("min-interval", 24*time.Hour, "Queries cant be scheduled less often than this")
 	excludeFlag := flag.String("exclude", "", "Comma-separated list of queries to exclude")
 	platformsFlag := flag.String("platforms", "", "Comma-separated list of platforms to include")
@@ -43,6 +45,7 @@ func main() {
 	maxTotalRuntimeFlag := flag.Duration("max-total-runtime-per-day", 10*time.Minute, "Maximum total runtime per day")
 	verifyFlag := flag.Bool("verify", false, "Verify the output")
 
+	klog.InitFlags(nil)
 	flag.Parse()
 	args := flag.Args()
 
@@ -59,6 +62,7 @@ func main() {
 		MinInterval:           *minIntervalFlag,
 		MaxInterval:           *maxIntervalFlag,
 		DefaultInterval:       *defaultIntervalFlag,
+		TagIntervals:          strings.Split(*tagIntervalsFlag, ","),
 		Exclude:               strings.Split(*excludeFlag, ","),
 		Platforms:             strings.Split(*platformsFlag, ","),
 		SingleQuotes:          *singleQuotesFlag,
@@ -87,11 +91,70 @@ func main() {
 	}
 }
 
+// calucate the default interval to use for a query.
+func calculateInterval(m *query.Metadata, c Config) int {
+	tagMap := map[string]bool{}
+	for _, t := range m.Tags {
+		tagMap[t] = true
+	}
+
+	interval := int(c.DefaultInterval.Seconds())
+
+	for _, k := range c.TagIntervals {
+		tag, modifier, found := strings.Cut(k, "=")
+		klog.V(1).Infof("processing tag interval: %s=%s (map: %v) - currently: %d", tag, modifier, tagMap, interval)
+
+		if !found {
+			klog.Errorf("unparseable tag interval: %v", k)
+			continue
+		}
+
+		if !tagMap[tag] {
+			klog.V(1).Infof("%s is not mentioned by this query, moving on", tag)
+			continue
+		}
+
+		if i, err := strconv.Atoi(modifier); err == nil {
+			klog.V(1).Infof("setting interval to %d", i)
+			interval = i
+			continue
+		}
+
+		if d, err := time.ParseDuration(modifier); err == nil {
+			klog.V(1).Infof("setting interval to %0.f", d.Seconds())
+			interval = int(d.Seconds())
+			continue
+		}
+
+		switch {
+		case strings.HasSuffix(modifier, "x"):
+			if x, err := strconv.Atoi(modifier); err == nil {
+				klog.V(1).Infof("multiplying interval by %d", x)
+				interval *= x
+			}
+		case strings.Contains(modifier, "x/"):
+			_, divisor, found := strings.Cut(k, "/")
+			if !found {
+				klog.Errorf("unparseable tag denominator: %v", k)
+				continue
+			}
+
+			if d, err := strconv.Atoi(divisor); err == nil {
+				klog.V(1).Infof("dividing interval by %d", d)
+				interval = int(float32(interval) / float32(d))
+			}
+		default:
+			klog.Errorf("do not understand modifier: %s", k)
+		}
+	}
+	return interval
+}
+
+// TODO: Move config application to pkg/query.
 func applyConfig(mm map[string]*query.Metadata, c Config) error {
 	klog.Infof("applying config: %+v", c)
 	minSeconds := int(c.MinInterval.Seconds())
 	maxSeconds := int(c.MaxInterval.Seconds())
-	defaultInterval := int(c.DefaultInterval.Seconds())
 	excludeMap := map[string]bool{}
 	for _, v := range c.Exclude {
 		if v == "" {
@@ -122,8 +185,9 @@ func applyConfig(mm map[string]*query.Metadata, c Config) error {
 		}
 
 		if m.Interval == "" {
-			klog.Infof("setting %q interval to %ds", name, defaultInterval)
-			m.Interval = strconv.Itoa(defaultInterval)
+			interval := calculateInterval(m, c)
+			klog.Infof("setting %q interval to %ds", name, interval)
+			m.Interval = strconv.Itoa(interval)
 		}
 
 		i, err := strconv.Atoi(m.Interval)
