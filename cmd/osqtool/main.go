@@ -250,7 +250,7 @@ func Verify(path string, c Config) error {
 	}
 
 	verified := 0
-	skipped := 0
+	partial := 0
 	errored := 0
 
 	totalRuntime := time.Duration(0)
@@ -272,8 +272,8 @@ func Verify(path string, c Config) error {
 		}
 
 		if vf.IncompatiblePlatform != "" {
-			klog.Warningf("Skipped %q: incompatible platform: %q", name, vf.IncompatiblePlatform)
-			skipped++
+			klog.Warningf("Partial test for %q: incompatible platform: %q", name, vf.IncompatiblePlatform)
+			partial++
 			continue
 		}
 
@@ -281,14 +281,14 @@ func Verify(path string, c Config) error {
 		verified++
 	}
 
-	klog.Infof("%d queries found: %d verified, %d errored, %d skipped", len(mm), verified, errored, skipped)
+	klog.Infof("%d queries found: %d verified, %d errored, %d partial", len(mm), verified, errored, partial)
 	klog.Infof("total runtime: %s", totalRuntime)
 	if totalRuntime > c.MaxTotalRuntimePerDay {
 		err = multierror.Append(err, fmt.Errorf("total runtime per day (%s) exceeds %s", totalRuntime, c.MaxTotalRuntimePerDay))
 	}
 
 	if verified == 0 {
-		err = multierror.Append(err, fmt.Errorf("0 queries were verified"))
+		err = multierror.Append(err, fmt.Errorf("0 queries were fully verified"))
 	}
 
 	return err

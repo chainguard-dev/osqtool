@@ -1,11 +1,13 @@
 package query
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -18,13 +20,15 @@ type VerifyResult struct {
 }
 
 func Verify(m *Metadata) (*VerifyResult, error) {
+	incompatible := ""
+
 	if m.Platform != "" && m.Platform != runtime.GOOS {
 		if m.Platform == "posix" {
 			if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
-				return &VerifyResult{IncompatiblePlatform: m.Platform}, nil
+				incompatible = "posix"
 			}
 		} else {
-			return &VerifyResult{IncompatiblePlatform: m.Platform}, nil
+			incompatible = m.Platform
 		}
 	}
 
@@ -45,12 +49,21 @@ func Verify(m *Metadata) (*VerifyResult, error) {
 	start := time.Now()
 	stdout, err := cmd.Output()
 	elapsed := time.Since(start)
+	klog.Infof("incompatible: %v", incompatible)
 
+	ignoreError := false
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("%s [%w]: %s\nstdin: %s", cmd, err, ee.Stderr, m.Query)
+			if incompatible != "" && ee.ExitCode() == 1 && bytes.Contains(ee.Stderr, []byte("no such table:")) {
+				klog.Infof("partial test due to incompatible platform %q: %s", incompatible, strings.TrimSpace(string(ee.Stderr)))
+				ignoreError = true
+			} else {
+				return nil, fmt.Errorf("%s [%w]: %s\nstdin: %s", cmd, err, ee.Stderr, m.Query)
+			}
 		}
-		return nil, fmt.Errorf("%s: %w", cmd, err)
+		if !ignoreError {
+			return nil, fmt.Errorf("%s: %w", cmd, err)
+		}
 	}
 
 	rows := []map[string]string{}
@@ -59,5 +72,5 @@ func Verify(m *Metadata) (*VerifyResult, error) {
 		klog.Errorf("unable to parse output: %v", err)
 	}
 
-	return &VerifyResult{Results: rows, Elapsed: elapsed}, nil
+	return &VerifyResult{IncompatiblePlatform: incompatible, Results: rows, Elapsed: elapsed}, nil
 }
