@@ -28,11 +28,13 @@ type Config struct {
 	Exclude               []string
 	Platforms             []string
 	SingleQuotes          bool
+	SingleLine            bool
 }
 
 func main() {
 	outputFlag := flag.String("output", "", "Location of output")
 	minIntervalFlag := flag.Duration("max-interval", 15*time.Second, "Queries can't be scheduled more often than this")
+	singleLineFlag := flag.Bool("single-line", false, "output queries is a single-line")
 	defaultIntervalFlag := flag.Duration("default-interval", 1*time.Hour, "Interval to use for queries which do not specify one")
 	tagIntervalsFlag := flag.String("tag-intervals", "transient=5m,postmortem=6h,rapid=15s,often=x/4,seldom=2x", "modifiers to the default-interval based on query tags")
 	maxIntervalFlag := flag.Duration("min-interval", 24*time.Hour, "Queries cant be scheduled less often than this")
@@ -66,6 +68,7 @@ func main() {
 		Exclude:               strings.Split(*excludeFlag, ","),
 		Platforms:             strings.Split(*platformsFlag, ","),
 		SingleQuotes:          *singleQuotesFlag,
+		SingleLine:            *singleLineFlag,
 	}
 
 	if *verifyFlag || action == "verify" {
@@ -173,6 +176,10 @@ func applyConfig(mm map[string]*query.Metadata, c Config) error {
 	}
 
 	for name, m := range mm {
+		if c.SingleLine {
+			m.Query = m.SingleLineQuery
+		}
+
 		if excludeMap[name] {
 			klog.Infof("Skipping %s - excluded by --exclude", name)
 			delete(mm, name)

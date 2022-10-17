@@ -11,9 +11,6 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// shortQueryLen is the cut-off for when to render a query within a single line.
-const shortQueryLen = 120
-
 type Metadata struct {
 	// Refer to q.value.HasMember() calls in osquery/config/packs.cpp
 	Query       string `json:"query"`
@@ -32,6 +29,8 @@ type Metadata struct {
 	Value               string   `json:"value,omitempty"`                // not an official field, but used in packs
 	Name                string   `json:"-"`
 	Tags                []string `json:"-"`
+
+	SingleLineQuery string `json:"single_line_query"`
 }
 
 // LoadFromDir recursively loads osquery queries from a directory.
@@ -183,19 +182,18 @@ func Parse(name string, bs []byte) (*Metadata, error) {
 		}
 	}
 
-	if len(strings.Join(out, "")) > shortQueryLen {
-		m.Query = strings.TrimSpace(strings.Join(out, "\n"))
-	} else {
-		// Single-line short queries
-		trimmed := []string{}
-		for _, l := range out {
-			trimmed = append(trimmed, strings.TrimSpace(l))
-		}
-		m.Query = strings.TrimSpace(strings.Join(trimmed, " "))
+	m.Query = strings.TrimSpace(strings.Join(out, "\n"))
+
+	// Single-line query form
+	trimmed := []string{}
+	for _, l := range out {
+		trimmed = append(trimmed, strings.TrimSpace(l))
 	}
+	m.SingleLineQuery = strings.TrimSpace(strings.Join(trimmed, " "))
 
 	if !strings.HasSuffix(m.Query, ";") {
 		m.Query += ";"
+		m.SingleLineQuery += ";"
 	}
 
 	if m.Platform != "" {
