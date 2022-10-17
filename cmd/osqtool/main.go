@@ -34,7 +34,7 @@ func main() {
 	outputFlag := flag.String("output", "", "Location of output")
 	minIntervalFlag := flag.Duration("max-interval", 15*time.Second, "Queries can't be scheduled more often than this")
 	defaultIntervalFlag := flag.Duration("default-interval", 1*time.Hour, "Interval to use for queries which do not specify one")
-	tagIntervalsFlag := flag.String("tag-intervals", "transient=5m,postmortem=6h,continuous=15s,often=x/4,seldom=2x", "modifiers to the default-interval based on query tags")
+	tagIntervalsFlag := flag.String("tag-intervals", "transient=5m,postmortem=6h,rapid=15s,often=x/4,seldom=2x", "modifiers to the default-interval based on query tags")
 	maxIntervalFlag := flag.Duration("min-interval", 24*time.Hour, "Queries cant be scheduled less often than this")
 	excludeFlag := flag.String("exclude", "", "Comma-separated list of queries to exclude")
 	platformsFlag := flag.String("platforms", "", "Comma-separated list of platforms to include")
