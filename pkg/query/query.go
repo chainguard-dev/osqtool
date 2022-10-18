@@ -30,7 +30,7 @@ type Metadata struct {
 	Name                string   `json:"-"`
 	Tags                []string `json:"-"`
 
-	SingleLineQuery string `json:"single_line_query"`
+	SingleLineQuery string `json:"-"`
 }
 
 // LoadFromDir recursively loads osquery queries from a directory.
