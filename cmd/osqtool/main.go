@@ -1,23 +1,29 @@
 // osqtool operates on osquery query and pack files
 //
-// Copyright 2021 Chainguard, Inc.
+// Copyright 2022 Chainguard, Inc.
+
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/chainguard-dev/osqtool/pkg/query"
+	"github.com/fatih/semgroup"
 	"github.com/hashicorp/go-multierror"
-
 	"k8s.io/klog/v2"
 )
 
-// A struct representation of our flags.
+// Config is a struct representation of our flags.
 type Config struct {
 	MaxDuration           time.Duration
 	MaxTotalRuntimePerDay time.Duration
@@ -27,6 +33,7 @@ type Config struct {
 	TagIntervals          []string
 	Exclude               []string
 	Platforms             []string
+	Workers               int
 	SingleQuotes          bool
 	MultiLine             bool
 }
@@ -40,6 +47,7 @@ func main() {
 	maxIntervalFlag := flag.Duration("min-interval", 24*time.Hour, "Queries cant be scheduled less often than this")
 	excludeFlag := flag.String("exclude", "", "Comma-separated list of queries to exclude")
 	platformsFlag := flag.String("platforms", "", "Comma-separated list of platforms to include")
+	workersFlag := flag.Int("workers", runtime.NumCPU(), "Number of workers to use")
 
 	singleQuotesFlag := flag.Bool("single-quotes", false, "Render double quotes as single quotes (may corrupt queries)")
 
@@ -67,11 +75,16 @@ func main() {
 		TagIntervals:          strings.Split(*tagIntervalsFlag, ","),
 		Exclude:               strings.Split(*excludeFlag, ","),
 		Platforms:             strings.Split(*platformsFlag, ","),
+		Workers:               *workersFlag,
 		SingleQuotes:          *singleQuotesFlag,
 		MultiLine:             *multiLineFlag,
 	}
 
 	if *verifyFlag || action == "verify" {
+		if _, err := exec.LookPath("osqueryi"); err != nil {
+			klog.Exit(fmt.Errorf("osqueryi executable not found on the host! Download it from: https://osquery.io/downloads"))
+		}
+
 		err = Verify(path, c)
 		if err != nil {
 			klog.Exitf("verify failed: %v", err)
@@ -94,7 +107,7 @@ func main() {
 	}
 }
 
-// calucate the default interval to use for a query.
+// calculateInterval calculates the default interval to use for a query.
 func calculateInterval(m *query.Metadata, c Config) int {
 	tagMap := map[string]bool{}
 	for _, t := range m.Tags {
@@ -215,7 +228,7 @@ func applyConfig(mm map[string]*query.Metadata, c Config) error {
 }
 
 // Apply applies programattic changes to an osquery pack.
-func Apply(sourcePath string, output string, c Config) error {
+func Apply(sourcePath, output string, c Config) error {
 	p, err := query.LoadPack(sourcePath)
 	if err != nil {
 		return fmt.Errorf("load pack: %v", err)
@@ -239,7 +252,7 @@ func Apply(sourcePath string, output string, c Config) error {
 }
 
 // Pack creates an osquery pack from a recursive directory of SQL files.
-func Pack(sourcePath string, output string, c Config) error {
+func Pack(sourcePath, output string, c Config) error {
 	mm, err := query.LoadFromDir(sourcePath)
 	if err != nil {
 		return fmt.Errorf("load from dir: %v", err)
@@ -264,7 +277,7 @@ func Pack(sourcePath string, output string, c Config) error {
 }
 
 // Unpack extracts SQL files from an osquery pack.
-func Unpack(sourcePath string, destPath string, c Config) error {
+func Unpack(sourcePath, destPath string, c Config) error {
 	if destPath == "" {
 		destPath = "."
 	}
@@ -320,36 +333,51 @@ func Verify(path string, c Config) error {
 		return fmt.Errorf("apply: %w", err)
 	}
 
-	verified := 0
-	partial := 0
-	errored := 0
+	var (
+		verified, partial, errored uint64
+		totalRuntime               time.Duration
+	)
 
-	totalRuntime := time.Duration(0)
+	sg := semgroup.NewGroup(context.Background(), int64(c.Workers))
 
 	for name, m := range mm {
-		klog.Infof("Verifying %q ...", name)
-		vf, verr := query.Verify(m)
-		if verr != nil {
-			klog.Errorf("%q failed validation: %v", name, verr)
-			err = multierror.Append(err, fmt.Errorf("%s: %w", name, verr))
-			errored++
-			continue
+		m := m
+
+		sg.Go(func() error {
+			klog.Infof("Verifying: %q ", name)
+			vf, verr := query.Verify(m)
+			if verr != nil {
+				klog.Errorf("%q failed validation: %v", name, verr)
+				err = multierror.Append(err, fmt.Errorf("%s: %w", name, verr))
+				errored++
+				return nil
+			}
+
+			atomic.AddInt64((*int64)(&totalRuntime), int64(vf.Elapsed))
+
+			if vf.Elapsed > c.MaxDuration {
+				err = multierror.Append(err, fmt.Errorf("%q: %s exceeds maximum duration of %s", name, vf.Elapsed.Round(time.Millisecond), c.MaxDuration))
+			}
+
+			if vf.IncompatiblePlatform != "" {
+				klog.Warningf("Partial test for %q: incompatible platform: %q", name, vf.IncompatiblePlatform)
+				atomic.AddUint64(&partial, 1)
+				return nil
+			}
+
+			klog.Infof("%q returned %d rows within %s", name, len(vf.Results), vf.Elapsed.Round(time.Millisecond))
+			atomic.AddUint64(&verified, 1)
+			return nil
+		})
+	}
+
+	if e := sg.Wait(); e != nil {
+		var multiErr *multierror.Error
+		if errors.As(e, &multiErr) {
+			if len(multiErr.Errors) > 0 {
+				err = multierror.Append(err, multiErr.Errors...)
+			}
 		}
-
-		totalRuntime += vf.Elapsed
-
-		if vf.Elapsed > c.MaxDuration {
-			err = multierror.Append(err, fmt.Errorf("%q: %s exceeds maximum duration of %s", name, vf.Elapsed, c.MaxDuration))
-		}
-
-		if vf.IncompatiblePlatform != "" {
-			klog.Warningf("Partial test for %q: incompatible platform: %q", name, vf.IncompatiblePlatform)
-			partial++
-			continue
-		}
-
-		klog.Infof("%q returned %d rows within %s", name, len(vf.Results), vf.Elapsed)
-		verified++
 	}
 
 	klog.Infof("%d queries found: %d verified, %d errored, %d partial", len(mm), verified, errored, partial)

@@ -22,6 +22,9 @@ linters-settings:
     min-occurrences: 5
     ignore-tests: true
 
+  gofumpt:
+    extra-rules: true
+
   gosec:
     excludes:
       - G107 # Potential HTTP request made with variable url

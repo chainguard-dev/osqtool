@@ -90,7 +90,7 @@ func LoadPack(path string) (*Pack, error) {
 	return pack, nil
 }
 
-// SaveToDirectories saves a map of queries into a directory.
+// SaveToDirectory saves a map of queries into a directory.
 func SaveToDirectory(mm map[string]*Metadata, destination string) error {
 	for name, m := range mm {
 		s, err := Render(m)

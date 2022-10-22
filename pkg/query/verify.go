@@ -42,14 +42,13 @@ func Verify(m *Metadata) (*VerifyResult, error) {
 		defer stdin.Close()
 		_, err := io.WriteString(stdin, m.Query)
 		if err != nil {
-			klog.Errorf("failed tos end data to osquery: %w", err)
+			klog.Errorf("failed tos end data to osqueryi: %w", err)
 		}
 	}()
 
 	start := time.Now()
 	stdout, err := cmd.Output()
 	elapsed := time.Since(start)
-	klog.Infof("incompatible: %v", incompatible)
 
 	ignoreError := false
 	if err != nil {
