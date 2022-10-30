@@ -117,7 +117,7 @@ func Render(m *Metadata) (string, error) {
 }
 
 // Parse parses query content and returns a Metadata object.
-func Parse(name string, bs []byte) (*Metadata, error) {
+func Parse(name string, bs []byte) (*Metadata, error) { //nolint: funlen // TODO: split into smaller functions
 	// NOTE: The 'name' can be as simple as the file base path
 	m := &Metadata{
 		Name: name,
