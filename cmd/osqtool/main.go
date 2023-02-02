@@ -32,6 +32,7 @@ type Config struct {
 	DefaultInterval       time.Duration
 	TagIntervals          []string
 	Exclude               []string
+	ExcludeTags           []string
 	Platforms             []string
 	Workers               int
 	SingleQuotes          bool
@@ -46,6 +47,7 @@ func main() {
 	tagIntervalsFlag := flag.String("tag-intervals", "transient=5m,postmortem=6h,rapid=15s,often=x/4,seldom=2x", "modifiers to the default-interval based on query tags")
 	maxIntervalFlag := flag.Duration("min-interval", 24*time.Hour, "Queries cant be scheduled less often than this")
 	excludeFlag := flag.String("exclude", "", "Comma-separated list of queries to exclude")
+	excludeTagsFlag := flag.String("exclude-tags", "disabled", "Comma-separated list of tags to exclude")
 	platformsFlag := flag.String("platforms", "", "Comma-separated list of platforms to include")
 	workersFlag := flag.Int("workers", runtime.NumCPU(), "Number of workers to use")
 
@@ -74,6 +76,7 @@ func main() {
 		DefaultInterval:       *defaultIntervalFlag,
 		TagIntervals:          strings.Split(*tagIntervalsFlag, ","),
 		Exclude:               strings.Split(*excludeFlag, ","),
+		ExcludeTags:           strings.Split(*excludeTagsFlag, ","),
 		Platforms:             strings.Split(*platformsFlag, ","),
 		Workers:               *workersFlag,
 		SingleQuotes:          *singleQuotesFlag,
@@ -179,6 +182,13 @@ func applyConfig(mm map[string]*query.Metadata, c Config) error {
 		excludeMap[v] = true
 	}
 
+	excludeTagsMap := map[string]bool{}
+	for _, v := range c.ExcludeTags {
+		if v != "" {
+			excludeTagsMap[v] = true
+		}
+	}
+
 	platformsMap := map[string]bool{}
 	for _, v := range c.Platforms {
 		if v == "" {
@@ -194,10 +204,19 @@ func applyConfig(mm map[string]*query.Metadata, c Config) error {
 		}
 
 		if excludeMap[name] {
-			klog.Infof("Skipping %s - excluded by --exclude", name)
+			klog.Infof("Skipping %s,excluded by --exclude", name)
 			delete(mm, name)
 			continue
 		}
+
+		for _, t := range m.Tags {
+			if excludeTagsMap[t] {
+				klog.Infof("Skipping %s, excluded by --exclude-tags=%s", name, t)
+				delete(mm, name)
+				continue
+			}
+		}
+
 		if len(platformsMap) > 0 && m.Platform != "" && !platformsMap[m.Platform] {
 			klog.Infof("Skipping %s - %q not listed in --platforms", name, m.Platform)
 			delete(mm, name)
