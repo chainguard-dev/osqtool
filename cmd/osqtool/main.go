@@ -51,7 +51,7 @@ func main() {
 	excludeTagsFlag := flag.String("exclude-tags", "disabled", "Comma-separated list of tags to exclude")
 	platformsFlag := flag.String("platforms", "", "Comma-separated list of platforms to include")
 	workersFlag := flag.Int("workers", 0, "Number of workers to use when verifying results (0 for automatic)")
-	maxResultsFlag := flag.Int("max-results", 1000, "Maximum number of results a query may return during verify")
+	maxResultsFlag := flag.Int("max-results", 250000, "Maximum number of results a query may return during verify")
 	singleQuotesFlag := flag.Bool("single-quotes", false, "Render double quotes as single quotes (may corrupt queries)")
 	maxQueryDurationFlag := flag.Duration("max-query-duration", 4*time.Second, "Maximum query duration (checked during --verify)")
 	maxQueryDurationPerDayFlag := flag.Duration("max-query-daily-duration", 60*time.Minute, "Maximum duration for a single query multiplied by how many times it runs daily (checked during --verify)")
