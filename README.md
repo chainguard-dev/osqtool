@@ -2,7 +2,7 @@
 
 [![experimental](http://badges.github.io/stability-badges/dist/experimental.svg)](http://github.com/badges/stability-badges)
 
-A swiss-army tool for creating and manipulating [osquery](https://osquery.io/) query packs.
+A swiss-army tool for testing, creating, and manipulating [osquery](https://osquery.io/) query packs.
 
 ![osqtool logo](images/logo-small.png?raw=true "osqtool logo")
 
@@ -21,7 +21,7 @@ osqtool supports 4 commands:
 * `apply` - programatically manipulate an osquery query pack, for instance, adjusting intervals
 * `pack` - create a JSON pack file from a directory of raw SQL files
 * `unpack` - extract raw SQL files from a JSON query pack file
-* `verify` - verify that the queries in a query pack, directory, or raw SQL file are valid
+* `verify` - verify that the queries in a query pack, directory, or raw SQL file are valid and test well
 
 ### apply
 
@@ -110,23 +110,39 @@ Here are the options that are available to `apply`, `unpack`, `pack`, and `verif
 
 ```
   -default-interval duration
-     Interval to use for queries which do not specify one (default 1h0m0s)
+    	Interval to use for queries which do not specify one (default 1h0m0s)
   -exclude string
-     Comma-separated list of queries to exclude
-  -max-duration duration
-     Maximum duration (checked during --verify) (default 4s)
+    	Comma-separated list of queries to exclude
+  -exclude-tags string
+    	Comma-separated list of tags to exclude (default "disabled")
   -max-interval duration
-     Queries can't be scheduled more often than this (default 15s)
-  -max-total-runtime-per-day duration
-     Maximum total runtime per day (default 10m0s)
+    	Queries can't be scheduled more often than this (default 15s)
+  -max-query-daily-duration duration
+    	Maximum duration for a single query multiplied by how many times it runs daily (checked during --verify) (default 1h0m0s)
+  -max-query-duration duration
+    	Maximum query duration (checked during --verify) (default 4s)
+  -max-results int
+    	Maximum number of results a query may return during verify (default 1000)
+  -max-total-daily-duration duration
+    	Maximum total query-duration per day across all queries (default 6h0m0s)
   -min-interval duration
-     Queries cant be scheduled less often than this (default 24h0m0s)
+    	Queries cant be scheduled less often than this (default 24h0m0s)
+  -multi-line
+    	output queries is multi-line form. This is accepted by osquery, but technically is invalid JSON.
   -output string
-     Location of output
+    	Location of output
   -platforms string
-     Comma-separated list of platforms to include
+    	Comma-separated list of platforms to include
+  -single-quotes
+    	Render double quotes as single quotes (may corrupt queries)
+  -skip_headers
+    	If true, avoid header prefixes in the log messages
+  -tag-intervals string
+    	modifiers to the default-interval based on query tags (default "transient=5m,postmortem=6h,rapid=15s,often=x/4,seldom=2x")
   -verify
-     Verify the output
+    	Verify the output
+  -workers int
+      Number of workers to use when verifying results (0 for automatic)
 ```
 
 At the moment, flags must be declared before the subcommand. `¯\_(ツ)_/¯`
