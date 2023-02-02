@@ -19,25 +19,25 @@ import (
 
 	"github.com/chainguard-dev/osqtool/pkg/query"
 	"github.com/fatih/semgroup"
-	"github.com/hashicorp/go-multierror"
 	"k8s.io/klog/v2"
 )
 
 // Config is a struct representation of our flags.
 type Config struct {
-	MaxDuration           time.Duration
-	MaxTotalRuntimePerDay time.Duration
-	MinInterval           time.Duration
-	MaxInterval           time.Duration
-	DefaultInterval       time.Duration
-	TagIntervals          []string
-	Exclude               []string
-	ExcludeTags           []string
-	Platforms             []string
-	Workers               int
-	MaxResults            int
-	SingleQuotes          bool
-	MultiLine             bool
+	maxQueryDuration            time.Duration
+	maxQueryDurationPerDay      time.Duration
+	MaxTotalQueryDurationPerDay time.Duration
+	MinInterval                 time.Duration
+	MaxInterval                 time.Duration
+	DefaultInterval             time.Duration
+	TagIntervals                []string
+	Exclude                     []string
+	ExcludeTags                 []string
+	Platforms                   []string
+	Workers                     int
+	MaxResults                  int
+	SingleQuotes                bool
+	MultiLine                   bool
 }
 
 func main() {
@@ -53,8 +53,9 @@ func main() {
 	workersFlag := flag.Int("workers", 0, "Number of workers to use when verifying results (0 for automatic)")
 	maxResultsFlag := flag.Int("max-results", 1000, "Maximum number of results a query may return during verify")
 	singleQuotesFlag := flag.Bool("single-quotes", false, "Render double quotes as single quotes (may corrupt queries)")
-	maxDurationFlag := flag.Duration("max-query-duration", 2000*time.Millisecond, "Maximum query duration (checked during --verify)")
-	maxTotalRuntimeFlag := flag.Duration("max-total-daily-duration", 10*time.Minute, "Maximum total runtime per day")
+	maxQueryDurationFlag := flag.Duration("max-query-duration", 4*time.Second, "Maximum query duration (checked during --verify)")
+	maxQueryDurationPerDayFlag := flag.Duration("max-query-daily-duration", 60*time.Minute, "Maximum duration for a single query multiplied by how many times it runs daily (checked during --verify)")
+	maxTotalQueryDurationFlag := flag.Duration("max-total-daily-duration", 6*time.Hour, "Maximum total query-duration per day across all queries")
 	verifyFlag := flag.Bool("verify", false, "Verify the output")
 
 	klog.InitFlags(nil)
@@ -69,19 +70,20 @@ func main() {
 	path := args[1]
 	var err error
 	c := Config{
-		MaxDuration:           *maxDurationFlag,
-		MaxTotalRuntimePerDay: *maxTotalRuntimeFlag,
-		MinInterval:           *minIntervalFlag,
-		MaxInterval:           *maxIntervalFlag,
-		MaxResults:            *maxResultsFlag,
-		DefaultInterval:       *defaultIntervalFlag,
-		TagIntervals:          strings.Split(*tagIntervalsFlag, ","),
-		Exclude:               strings.Split(*excludeFlag, ","),
-		ExcludeTags:           strings.Split(*excludeTagsFlag, ","),
-		Platforms:             strings.Split(*platformsFlag, ","),
-		Workers:               *workersFlag,
-		SingleQuotes:          *singleQuotesFlag,
-		MultiLine:             *multiLineFlag,
+		maxQueryDuration:            *maxQueryDurationFlag,
+		maxQueryDurationPerDay:      *maxQueryDurationPerDayFlag,
+		MaxTotalQueryDurationPerDay: *maxTotalQueryDurationFlag,
+		MinInterval:                 *minIntervalFlag,
+		MaxInterval:                 *maxIntervalFlag,
+		MaxResults:                  *maxResultsFlag,
+		DefaultInterval:             *defaultIntervalFlag,
+		TagIntervals:                strings.Split(*tagIntervalsFlag, ","),
+		Exclude:                     strings.Split(*excludeFlag, ","),
+		ExcludeTags:                 strings.Split(*excludeTagsFlag, ","),
+		Platforms:                   strings.Split(*platformsFlag, ","),
+		Workers:                     *workersFlag,
+		SingleQuotes:                *singleQuotesFlag,
+		MultiLine:                   *multiLineFlag,
 	}
 
 	if c.Workers < 1 {
@@ -321,10 +323,21 @@ func Unpack(sourcePath, destPath string, c Config) error {
 	err = query.SaveToDirectory(p.Queries, destPath)
 	if err != nil {
 		return fmt.Errorf("save to dir: %v", err)
-	}
 
+	}
 	fmt.Printf("%d queries saved to %s\n", len(p.Queries), destPath)
 	return nil
+}
+
+// dailyQueryDuration returns what the total duration for a query would be for a day
+func dailyQueryDuration(interval string, d time.Duration) (time.Duration, int, error) {
+	i, err := strconv.Atoi(interval)
+	if err != nil {
+		return time.Duration(0), 0, err
+	}
+
+	runs := int(86400 / i)
+	return time.Duration(runs) * d, runs, nil
 }
 
 // Verify verifies the queries within a directory or pack.
@@ -362,7 +375,8 @@ func Verify(path string, c Config) error {
 
 	var (
 		verified, partial, errored uint64
-		totalRuntime               time.Duration
+		totalQueryDuration         time.Duration
+		totalRuns                  int64
 	)
 
 	sg := semgroup.NewGroup(context.Background(), int64(c.Workers))
@@ -376,17 +390,27 @@ func Verify(path string, c Config) error {
 			vf, verr := query.Verify(m)
 			if verr != nil {
 				klog.Errorf("%q failed validation: %v", name, verr)
-				err = multierror.Append(err, fmt.Errorf("%s: %w", name, verr))
+				return fmt.Errorf("%s: %w", name, verr)
 				errored++
-				return nil
 			}
 
-			atomic.AddInt64((*int64)(&totalRuntime), int64(vf.Elapsed))
-
-			if vf.Elapsed > c.MaxDuration {
-				err = multierror.Append(err, fmt.Errorf("%q: %s exceeds --max-duration=%s", name, vf.Elapsed.Round(time.Millisecond), c.MaxDuration))
+			if vf.Elapsed > c.maxQueryDuration {
 				errored++
-				return nil
+				return fmt.Errorf("%q: %s exceeds --max-query-duration=%s", name, vf.Elapsed.Round(time.Millisecond), c.maxQueryDuration)
+			}
+
+			queryDurationPerDay, runsPerDay, err := dailyQueryDuration(m.Interval, vf.Elapsed)
+			if err != nil {
+				errored++
+				return fmt.Errorf("%q: failed to parse interval: %v", name, err)
+			}
+
+			atomic.AddInt64((*int64)(&totalQueryDuration), int64(queryDurationPerDay))
+			atomic.AddInt64((*int64)(&totalRuns), int64(runsPerDay))
+
+			if queryDurationPerDay > c.maxQueryDurationPerDay {
+				errored++
+				return fmt.Errorf("%q: %s exceeds --max-daily-query-duration=%s (%d runs * %s)", name, queryDurationPerDay.Round(time.Second), c.maxQueryDurationPerDay, runsPerDay, queryDurationPerDay.Round(time.Millisecond))
 			}
 
 			if len(vf.Results) > c.MaxResults {
@@ -399,41 +423,36 @@ func Verify(path string, c Config) error {
 					shortResult = append(shortResult, "...")
 				}
 
-				err = multierror.Append(err, fmt.Errorf("%q: %d results exceeds --max-results=%d:\n  %s", name, len(vf.Results), c.MaxResults, strings.Join(shortResult, "\n  ")))
 				errored++
-				return nil
+				return fmt.Errorf("%q: %d results exceeds --max-results=%d:\n  %s", name, len(vf.Results), c.MaxResults, strings.Join(shortResult, "\n  "))
 			}
 
 			if vf.IncompatiblePlatform != "" {
-				klog.Warningf("Partial test for %q: incompatible platform: %q", name, vf.IncompatiblePlatform)
 				atomic.AddUint64(&partial, 1)
 				return nil
 			}
 
-			klog.Infof("%q returned %d rows within %s", name, len(vf.Results), vf.Elapsed.Round(time.Millisecond))
+			klog.Infof("%q returned %d rows in %s, daily cost for interval %s (%d runs): %s", name, len(vf.Results), vf.Elapsed.Round(time.Millisecond), m.Interval, runsPerDay, queryDurationPerDay.Round(time.Second))
 			atomic.AddUint64(&verified, 1)
 			return nil
 		})
 	}
 
-	if e := sg.Wait(); e != nil {
-		var multiErr *multierror.Error
-		if errors.As(e, &multiErr) {
-			if len(multiErr.Errors) > 0 {
-				err = multierror.Append(err, multiErr.Errors...)
-			}
-		}
+	errs := []error{}
+	// Someday this might return new go errors
+	errs = append(errs, sg.Wait())
+
+	if verified == 0 {
+		errs = append(errs, fmt.Errorf("0 queries were fully verified"))
+	}
+
+	if totalQueryDuration > c.MaxTotalQueryDurationPerDay {
+		errs = append(errs, fmt.Errorf("total query duration per day (%s) exceeds --max-total-daily-duration=%s", totalQueryDuration.Round(time.Second), c.MaxTotalQueryDurationPerDay))
 	}
 
 	klog.Infof("%d queries found: %d verified, %d errored, %d partial", len(mm), verified, errored, partial)
-	klog.Infof("total runtime: %s", totalRuntime)
-	if totalRuntime > c.MaxTotalRuntimePerDay {
-		err = multierror.Append(err, fmt.Errorf("total runtime per day (%s) exceeds %s", totalRuntime, c.MaxTotalRuntimePerDay))
-	}
+	klog.Infof("total daily query runs: %d", totalRuns)
+	klog.Infof("total daily execution time: %s", totalQueryDuration)
 
-	if verified == 0 {
-		err = multierror.Append(err, fmt.Errorf("0 queries were fully verified"))
-	}
-
-	return err
+	return errors.Join(errs...)
 }
