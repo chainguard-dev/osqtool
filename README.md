@@ -28,9 +28,11 @@ osqtool supports 4 commands:
 Want to take an osquery pack from the internet, but make changes to it programatically? osqtool has you covered:
 
 ```shell
-curl https://github.com/osquery/osquery/blob/master/packs/it-compliance.conf \
+curl https://raw.githubusercontent.com/osquery/osquery/master/packs/it-compliance.conf \
   | osqtool --min-interval=8h --platforms linux,posix --exclude os_version apply -
 ```
+
+This will set all queries to an 8-hour interval, remove Windows-specific queries, and exclude a query named `os_version`.
 
 ### Pack
 
@@ -62,7 +64,7 @@ Here's the example output:
 ...
 ```
 
-The `pack` command supports the same flags as the `apply` command.
+The `pack` command supports the same flags as the `apply` command. In particular, you may find `--exclude`, `--exclude-tags`, and `--verify` useful.
 
 ### Unpack
 
