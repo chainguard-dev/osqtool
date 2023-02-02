@@ -49,7 +49,7 @@ func main() {
 	excludeFlag := flag.String("exclude", "", "Comma-separated list of queries to exclude")
 	excludeTagsFlag := flag.String("exclude-tags", "disabled", "Comma-separated list of tags to exclude")
 	platformsFlag := flag.String("platforms", "", "Comma-separated list of platforms to include")
-	workersFlag := flag.Int("workers", runtime.NumCPU(), "Number of workers to use")
+	workersFlag := flag.Int("workers", 0, "Number of workers to use when verifying results (0 for automatic)")
 
 	singleQuotesFlag := flag.Bool("single-quotes", false, "Render double quotes as single quotes (may corrupt queries)")
 
@@ -81,6 +81,10 @@ func main() {
 		Workers:               *workersFlag,
 		SingleQuotes:          *singleQuotesFlag,
 		MultiLine:             *multiLineFlag,
+	}
+
+	if c.Workers < 1 {
+		c.Workers = runtime.NumCPU()
 	}
 
 	if *verifyFlag || action == "verify" {
