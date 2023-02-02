@@ -416,7 +416,7 @@ func Verify(path string, c Config) error {
 
 			if queryDurationPerDay > c.maxQueryDurationPerDay {
 				errored++
-				return fmt.Errorf("%q: %s exceeds --max-daily-query-duration=%s (%d runs * %s)", name, queryDurationPerDay.Round(time.Second), c.maxQueryDurationPerDay, runsPerDay, queryDurationPerDay.Round(time.Millisecond))
+				return fmt.Errorf("%q: %s exceeds --max-daily-query-duration=%s (%d runs * %s)", name, queryDurationPerDay.Round(time.Second), c.maxQueryDurationPerDay, runsPerDay, vf.Elapsed.Round(time.Millisecond))
 			}
 
 			if len(vf.Results) > c.MaxResults {
