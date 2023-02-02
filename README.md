@@ -104,6 +104,8 @@ Verifying "unexpected-shell-parents" ...
  * xprotect-reports: /sbin/osqueryi --json [exit status 1]: Error: near line 1: no such table: xprotect_reports
 ```
 
+You can set limits on the number of rows returned, amount of runtime per query, per day, or across the pack, see `--help` for more information.
+
 ### Common Flags
 
 Here are the options that are available to `apply`, `unpack`, `pack`, and `verify`
