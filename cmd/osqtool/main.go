@@ -54,8 +54,7 @@ func main() {
 	workersFlag := flag.Int("workers", runtime.NumCPU(), "Number of workers to use")
 
 	singleQuotesFlag := flag.Bool("single-quotes", false, "Render double quotes as single quotes (may corrupt queries)")
-
-	maxDurationFlag := flag.Duration("max-duration", 4000*time.Millisecond, "Maximum query duration (checked during --verify)")
+	maxDurationFlag := flag.Duration("max-duration", 2000*time.Millisecond, "Maximum query duration (checked during --verify)")
 	maxTotalRuntimeFlag := flag.Duration("max-total-runtime-per-day", 10*time.Minute, "Maximum total runtime per day")
 	verifyFlag := flag.Bool("verify", false, "Verify the output")
 
