@@ -50,9 +50,8 @@ func main() {
 	excludeFlag := flag.String("exclude", "", "Comma-separated list of queries to exclude")
 	excludeTagsFlag := flag.String("exclude-tags", "disabled", "Comma-separated list of tags to exclude")
 	platformsFlag := flag.String("platforms", "", "Comma-separated list of platforms to include")
+	workersFlag := flag.Int("workers", 0, "Number of workers to use when verifying results (0 for automatic)")
 	maxResultsFlag := flag.Int("max-results", 1000, "Maximum number of results a query may return during verify")
-	workersFlag := flag.Int("workers", runtime.NumCPU(), "Number of workers to use")
-
 	singleQuotesFlag := flag.Bool("single-quotes", false, "Render double quotes as single quotes (may corrupt queries)")
 	maxDurationFlag := flag.Duration("max-duration", 2000*time.Millisecond, "Maximum query duration (checked during --verify)")
 	maxTotalRuntimeFlag := flag.Duration("max-total-runtime-per-day", 10*time.Minute, "Maximum total runtime per day")
@@ -83,6 +82,13 @@ func main() {
 		Workers:               *workersFlag,
 		SingleQuotes:          *singleQuotesFlag,
 		MultiLine:             *multiLineFlag,
+	}
+
+	if c.Workers < 1 {
+		c.Workers = runtime.NumCPU()
+		if *verifyFlag || action == "verify" {
+			klog.Infof("automatically setting verify worker count to %d", c.Workers)
+		}
 	}
 
 	if *verifyFlag || action == "verify" {
