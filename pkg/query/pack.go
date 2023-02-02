@@ -14,8 +14,6 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// bug: '' in spotlight and unexpected dev-opener
-
 type Pack struct {
 	Queries   map[string]*Metadata `json:"queries,omitempty"`
 	Discovery map[string]*Metadata `json:"discovery,omitempty"`
@@ -85,6 +83,12 @@ func LoadPack(path string) (*Pack, error) {
 			v.Platform = pack.Platform
 		}
 		v.Query = strings.ReplaceAll(v.Query, "\\n", "\n")
+
+		singles := []string{}
+		for _, line := range strings.Split(v.Query, "\n") {
+			singles = append(singles, strings.TrimSpace(line))
+		}
+		v.SingleLineQuery = strings.Join(singles, " ")
 	}
 
 	return pack, nil
