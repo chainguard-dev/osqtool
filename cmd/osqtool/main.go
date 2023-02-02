@@ -35,6 +35,7 @@ type Config struct {
 	ExcludeTags           []string
 	Platforms             []string
 	Workers               int
+	MaxResults            int
 	SingleQuotes          bool
 	MultiLine             bool
 }
@@ -49,11 +50,12 @@ func main() {
 	excludeFlag := flag.String("exclude", "", "Comma-separated list of queries to exclude")
 	excludeTagsFlag := flag.String("exclude-tags", "disabled", "Comma-separated list of tags to exclude")
 	platformsFlag := flag.String("platforms", "", "Comma-separated list of platforms to include")
+	maxResultsFlag := flag.Int("max-results", 1000, "Maximum number of results a query may return during verify")
 	workersFlag := flag.Int("workers", runtime.NumCPU(), "Number of workers to use")
 
 	singleQuotesFlag := flag.Bool("single-quotes", false, "Render double quotes as single quotes (may corrupt queries)")
 
-	maxDurationFlag := flag.Duration("max-duration", 4000*time.Millisecond, "Maximum duration (checked during --verify)")
+	maxDurationFlag := flag.Duration("max-duration", 4000*time.Millisecond, "Maximum query duration (checked during --verify)")
 	maxTotalRuntimeFlag := flag.Duration("max-total-runtime-per-day", 10*time.Minute, "Maximum total runtime per day")
 	verifyFlag := flag.Bool("verify", false, "Verify the output")
 
@@ -73,6 +75,7 @@ func main() {
 		MaxTotalRuntimePerDay: *maxTotalRuntimeFlag,
 		MinInterval:           *minIntervalFlag,
 		MaxInterval:           *maxIntervalFlag,
+		MaxResults:            *maxResultsFlag,
 		DefaultInterval:       *defaultIntervalFlag,
 		TagIntervals:          strings.Split(*tagIntervalsFlag, ","),
 		Exclude:               strings.Split(*excludeFlag, ","),
@@ -361,6 +364,7 @@ func Verify(path string, c Config) error {
 
 	for name, m := range mm {
 		m := m
+		name := name
 
 		sg.Go(func() error {
 			klog.Infof("Verifying: %q ", name)
@@ -375,7 +379,24 @@ func Verify(path string, c Config) error {
 			atomic.AddInt64((*int64)(&totalRuntime), int64(vf.Elapsed))
 
 			if vf.Elapsed > c.MaxDuration {
-				err = multierror.Append(err, fmt.Errorf("%q: %s exceeds maximum duration of %s", name, vf.Elapsed.Round(time.Millisecond), c.MaxDuration))
+				err = multierror.Append(err, fmt.Errorf("%q: %s exceeds --max-duration=%s", name, vf.Elapsed.Round(time.Millisecond), c.MaxDuration))
+				errored++
+				return nil
+			}
+
+			if len(vf.Results) > c.MaxResults {
+				shortResult := []string{}
+				for _, r := range vf.Results {
+					shortResult = append(shortResult, fmt.Sprintf("%s", r))
+				}
+				if len(shortResult) >= 10 {
+					shortResult = shortResult[0:10]
+					shortResult = append(shortResult, "...")
+				}
+
+				err = multierror.Append(err, fmt.Errorf("%q: %d results exceeds --max-results=%d:\n  %s", name, len(vf.Results), c.MaxResults, strings.Join(shortResult, "\n  ")))
+				errored++
+				return nil
 			}
 
 			if vf.IncompatiblePlatform != "" {
