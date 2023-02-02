@@ -394,6 +394,12 @@ func Verify(path string, c Config) error {
 				errored++
 			}
 
+			// Short-circuit out of remaining tests if the query is not compatible with the local platform
+			if vf.IncompatiblePlatform != "" {
+				atomic.AddUint64(&partial, 1)
+				return nil
+			}
+
 			if vf.Elapsed > c.maxQueryDuration {
 				errored++
 				return fmt.Errorf("%q: %s exceeds --max-query-duration=%s", name, vf.Elapsed.Round(time.Millisecond), c.maxQueryDuration)
@@ -425,11 +431,6 @@ func Verify(path string, c Config) error {
 
 				errored++
 				return fmt.Errorf("%q: %d results exceeds --max-results=%d:\n  %s", name, len(vf.Results), c.MaxResults, strings.Join(shortResult, "\n  "))
-			}
-
-			if vf.IncompatiblePlatform != "" {
-				atomic.AddUint64(&partial, 1)
-				return nil
 			}
 
 			klog.Infof("%q returned %d rows in %s, daily cost for interval %s (%d runs): %s", name, len(vf.Results), vf.Elapsed.Round(time.Millisecond), m.Interval, runsPerDay, queryDurationPerDay.Round(time.Second))
