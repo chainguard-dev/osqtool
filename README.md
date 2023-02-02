@@ -8,7 +8,7 @@ A swiss-army tool for creating and manipulating [osquery](https://osquery.io/) q
 
 ## Installation
 
-With [Go](https://go.dev/) v1.19+ installed, run:
+With [Go](https://go.dev/) v1.20+ installed, run:
 
 ```shell
 go install github.com/chainguard-dev/osqtool/cmd/osqtool@latest
