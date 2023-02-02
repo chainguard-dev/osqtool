@@ -87,11 +87,7 @@ func main() {
 	}
 
 	if c.Workers < 1 {
-		// Leave threads for osqueryd as well by default
-		c.Workers = runtime.NumCPU() / 2
-		if c.Workers < 1 {
-			c.Workers = 1
-		}
+		c.Workers = runtime.NumCPU()
 		if *verifyFlag || action == "verify" {
 			klog.Infof("automatically setting verify worker count to %d", c.Workers)
 		}
