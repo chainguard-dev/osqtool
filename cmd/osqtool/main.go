@@ -53,8 +53,8 @@ func main() {
 	workersFlag := flag.Int("workers", 0, "Number of workers to use when verifying results (0 for automatic)")
 	maxResultsFlag := flag.Int("max-results", 1000, "Maximum number of results a query may return during verify")
 	singleQuotesFlag := flag.Bool("single-quotes", false, "Render double quotes as single quotes (may corrupt queries)")
-	maxDurationFlag := flag.Duration("max-duration", 2000*time.Millisecond, "Maximum query duration (checked during --verify)")
-	maxTotalRuntimeFlag := flag.Duration("max-total-runtime-per-day", 10*time.Minute, "Maximum total runtime per day")
+	maxDurationFlag := flag.Duration("max-query-duration", 2000*time.Millisecond, "Maximum query duration (checked during --verify)")
+	maxTotalRuntimeFlag := flag.Duration("max-total-daily-duration", 10*time.Minute, "Maximum total runtime per day")
 	verifyFlag := flag.Bool("verify", false, "Verify the output")
 
 	klog.InitFlags(nil)
