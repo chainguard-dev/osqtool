@@ -42,10 +42,10 @@ type Config struct {
 
 func main() {
 	outputFlag := flag.String("output", "", "Location of output")
-	minIntervalFlag := flag.Duration("max-interval", 15*time.Second, "Queries can't be scheduled more often than this")
+	minIntervalFlag := flag.Duration("max-interval", 20*time.Second, "Queries can't be scheduled more often than this")
 	multiLineFlag := flag.Bool("multi-line", false, "output queries is multi-line form. This is accepted by osquery, but technically is invalid JSON.")
 	defaultIntervalFlag := flag.Duration("default-interval", 1*time.Hour, "Interval to use for queries which do not specify one")
-	tagIntervalsFlag := flag.String("tag-intervals", "transient=5m,postmortem=6h,rapid=15s,often=x/4,seldom=2x", "modifiers to the default-interval based on query tags")
+	tagIntervalsFlag := flag.String("tag-intervals", "transient=6m,persistent=1.25x,postmortem=6h,rapid=20s,often=x/3,seldom=3x", "modifiers to the default-interval based on query tags")
 	maxIntervalFlag := flag.Duration("min-interval", 24*time.Hour, "Queries cant be scheduled less often than this")
 	excludeFlag := flag.String("exclude", "", "Comma-separated list of queries to exclude")
 	excludeTagsFlag := flag.String("exclude-tags", "disabled", "Comma-separated list of tags to exclude")
@@ -144,23 +144,27 @@ func calculateInterval(m *query.Metadata, c Config) int {
 		}
 
 		if i, err := strconv.Atoi(modifier); err == nil {
-			klog.V(1).Infof("setting interval to %d", i)
+			klog.V(1).Infof("%s is an int, setting interval to %d", modifier, i)
 			interval = i
 			continue
 		}
 
 		if d, err := time.ParseDuration(modifier); err == nil {
-			klog.V(1).Infof("setting interval to %0.f", d.Seconds())
+			klog.V(1).Infof("%s is a duration, setting interval to %0.f", modifier, d.Seconds())
 			interval = int(d.Seconds())
 			continue
 		}
 
 		switch {
 		case strings.HasSuffix(modifier, "x"):
-			if x, err := strconv.Atoi(modifier); err == nil {
-				klog.V(1).Infof("multiplying interval by %d", x)
-				interval *= x
+			x, err := strconv.ParseFloat(strings.Trim(modifier, "x"), 64)
+			if err != nil {
+				klog.Errorf("unparseable tag multiplier: %v", modifier)
+				continue
 			}
+
+			klog.V(1).Infof("multiplying interval by %d", x)
+			interval = int(float64(interval) * x)
 		case strings.Contains(modifier, "x/"):
 			_, divisor, found := strings.Cut(k, "/")
 			if !found {
@@ -168,9 +172,9 @@ func calculateInterval(m *query.Metadata, c Config) int {
 				continue
 			}
 
-			if d, err := strconv.Atoi(divisor); err == nil {
+			if d, err := strconv.ParseFloat(divisor, 64); err == nil {
 				klog.V(1).Infof("dividing interval by %d", d)
-				interval = int(float32(interval) / float32(d))
+				interval = int(float64(interval) / d)
 			}
 		default:
 			klog.Errorf("do not understand modifier: %s", k)
