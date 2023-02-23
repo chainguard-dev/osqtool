@@ -1,6 +1,9 @@
 # osqtool
 
-[![experimental](http://badges.github.io/stability-badges/dist/experimental.svg)](http://github.com/badges/stability-badges)
+[![Actions Status](https://github.com/chainguard-dev/osqtool/workflows/Go/badge.svg)](https://github.com/chainguard-dev/osqtool/actions)
+[![Go Report](https://goreportcard.com/badge/github.com/chainguard-dev/osqtool)](https://goreportcard.com/badge/github.com/chainguard-dev/osqtool)
+[![Latest Release](https://img.shields.io/github/v/release/chainguard-dev/osqtool?include_prereleases)](https://github.com/chainguard-dev/osqtool/releases/latest)
+[![stable](http://badges.github.io/stability-badges/dist/stable.svg)](http://github.com/badges/stability-badges)
 
 A swiss-army tool for testing, creating, and manipulating [osquery](https://osquery.io/) query packs.
 
@@ -21,6 +24,7 @@ osqtool supports 4 commands:
 * `apply` - programatically manipulate an osquery query pack, for instance, adjusting intervals
 * `pack` - create a JSON pack file from a directory of raw SQL files
 * `unpack` - extract raw SQL files from a JSON query pack file
+* `run` - run an osquery pack file or directory of SQL queries with human and diff-friendly output
 * `verify` - verify that the queries in a query pack, directory, or raw SQL file are valid and test well
 
 ### apply
@@ -66,6 +70,34 @@ Here's the example output:
 
 The `pack` command supports the same flags as the `apply` command. In particular, you may find `--exclude`, `--exclude-tags`, and `--verify` useful.
 
+### Run
+
+Run a set of queries!
+
+```shell
+osqtool run incident-response.conf
+```
+
+Example output:
+
+```log
+block_devices (7 rows)
+----------------------
+block_size:512 label: model: name:/dev/nvme0n1 parent: size:488397168 type: uuid: vendor:
+block_size: label: model: name:/dev/nvme0n1p1 parent:/dev/nvme0n1 size:614400 type: uuid: vendor:
+block_size: label: model: name:/dev/nvme0n1p2 parent:/dev/nvme0n1 size:415929892 type: uuid: vendor:
+block_size: label: model: name:/dev/nvme0n1p3 parent:/dev/nvme0n1 size:71843677 type: uuid: vendor:
+block_size:512 label: model:'SD Card Reader' name:/dev/sda parent: size:0 type: uuid: vendor:CalDigit
+block_size:512 label: model: name:/dev/dm-0 parent: size:415925796 type: uuid: vendor:
+block_size:512 label: model: name:/dev/dm-1 parent: size:71839581 type: uuid: vendor:
+
+crontab (1 rows)
+----------------
+command:'root run-parts /etc/cron.hourly' day_of_month:* day_of_week:* event: hour:* minute:01 month:* path:/etc/cron.d/0hourly
+
+disk_encryption (0 rows)
+```
+
 ### Unpack
 
 Extract an osquery pack into a directory of SQL files:
@@ -85,6 +117,7 @@ Writing 209 bytes to /tmp/out/iWorm.sql ...
 ```
 
 The `unpack` command supports the same flags as the `apply` command.
+
 
 ### Verify
 
