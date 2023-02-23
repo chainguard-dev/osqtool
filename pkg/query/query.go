@@ -43,7 +43,7 @@ func LoadFromDir(path string) (map[string]*Metadata, error) {
 				return err
 			}
 			if strings.HasSuffix(path, ".sql") {
-				klog.Infof("found query: %s", path)
+				klog.V(1).Infof("found query: %s", path)
 				m, err := Load(path)
 				if err != nil {
 					return fmt.Errorf("load: %v", err)
