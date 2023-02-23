@@ -1,5 +1,8 @@
 # osqtool
 
+[![Actions Status](https://github.com/chainguard-dev/osqtool/workflows/Go/badge.svg)](https://github.com/chainguard-dev/osqtool/actions)
+[![Go Report](https://goreportcard.com/badge/github.com/chainguard-dev/osqtool)](https://goreportcard.com/badge/github.com/chainguard-dev/osqtool)
+[![Latest Release](https://img.shields.io/github/v/release/chainguard-dev/osqtool?include_prereleases)](https://github.com/chainguard-dev/osqtool/releases/latest)
 [![stable](http://badges.github.io/stability-badges/dist/stable.svg)](http://github.com/badges/stability-badges)
 
 A swiss-army tool for testing, creating, and manipulating [osquery](https://osquery.io/) query packs.
