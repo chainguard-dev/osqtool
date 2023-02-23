@@ -21,7 +21,7 @@ LINTERS :=
 FIXERS :=
 
 GOLANGCI_LINT_CONFIG := $(LINT_ROOT)/.golangci.yml
-GOLANGCI_LINT_VERSION ?= v1.50.0
+GOLANGCI_LINT_VERSION ?= v1.51.2
 GOLANGCI_LINT_BIN := $(LINT_ROOT)/out/linters/golangci-lint-$(GOLANGCI_LINT_VERSION)-$(LINT_ARCH)
 $(GOLANGCI_LINT_BIN):
 	mkdir -p $(LINT_ROOT)/out/linters
@@ -44,3 +44,7 @@ _lint: $(LINTERS)
 fix: $(FIXERS)
 
 # END: lint-install .
+
+out/osqtool:
+	mkdir -p out
+	GOBIN=$(CURDIR)/out go install ./cmd/osqtool/
