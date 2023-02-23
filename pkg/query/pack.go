@@ -70,7 +70,6 @@ func LoadPack(path string) (*Pack, error) {
 	// workaround: cannot unmarshal number into Go struct field Metadata.queries.interval of type string
 	nakedInterval := regexp.MustCompile(`"interval"\s*:\s*(\d+),`)
 	bs = nakedInterval.ReplaceAll(bs, []byte("\"interval\": \"$1\","))
-	klog.Infof("bytes: %s", bs)
 
 	err = json.Unmarshal(bs, pack)
 	if err != nil {
@@ -78,7 +77,9 @@ func LoadPack(path string) (*Pack, error) {
 	}
 
 	// Final repairs
-	for _, v := range pack.Queries {
+	for name, v := range pack.Queries {
+		v.Name = name
+
 		if pack.Platform != "" && v.Platform == "" {
 			v.Platform = pack.Platform
 		}

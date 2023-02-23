@@ -405,7 +405,7 @@ func Run(path, output string, c Config) error {
 	}
 
 	sort.Slice(qs, func(i, j int) bool { return qs[i].Name < qs[j].Name })
-	lastRows := 0
+	lastRows := -1
 
 	// TODO: Parallelize. Output must be sorted for diffing
 	for _, m := range qs {
