@@ -1,6 +1,6 @@
 # osqtool
 
-[![experimental](http://badges.github.io/stability-badges/dist/experimental.svg)](http://github.com/badges/stability-badges)
+[![stable](http://badges.github.io/stability-badges/dist/stable.svg)](http://github.com/badges/stability-badges)
 
 A swiss-army tool for testing, creating, and manipulating [osquery](https://osquery.io/) query packs.
 
