@@ -12,10 +12,12 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/chainguard-dev/osqtool/pkg/query"
 	"github.com/fatih/semgroup"
@@ -56,14 +58,14 @@ func main() {
 	maxQueryDurationFlag := flag.Duration("max-query-duration", 4*time.Second, "Maximum query duration (checked during --verify)")
 	maxQueryDurationPerDayFlag := flag.Duration("max-query-daily-duration", 60*time.Minute, "Maximum duration for a single query multiplied by how many times it runs daily (checked during --verify)")
 	maxTotalQueryDurationFlag := flag.Duration("max-total-daily-duration", 6*time.Hour, "Maximum total query-duration per day across all queries")
-	verifyFlag := flag.Bool("verify", false, "Verify the output")
+	verifyFlag := flag.Bool("verify", false, "Verify queries quickly")
 
 	klog.InitFlags(nil)
 	flag.Parse()
 	args := flag.Args()
 
 	if len(args) < 2 {
-		klog.Exitf("usage: osqtool [apply|pack|unpack|verify] <path>")
+		klog.Exitf("usage: osqtool [apply|pack|run|unpack|verify] <path>")
 	}
 
 	action := args[0]
@@ -112,6 +114,9 @@ func main() {
 	case "unpack":
 		err = Unpack(path, *outputFlag, c)
 	case "verify":
+		err = Verify(path, c)
+	case "run":
+		err = Run(path, *outputFlag, c)
 	default:
 		err = fmt.Errorf("unknown action")
 	}
@@ -185,7 +190,7 @@ func calculateInterval(m *query.Metadata, c Config) int {
 
 // TODO: Move config application to pkg/query.
 func applyConfig(mm map[string]*query.Metadata, c Config) error {
-	klog.Infof("applying config: %+v", c)
+	klog.V(1).Infof("applying config: %+v", c)
 	minSeconds := int(c.MinInterval.Seconds())
 	maxSeconds := int(c.MaxInterval.Seconds())
 	excludeMap := map[string]bool{}
@@ -239,7 +244,7 @@ func applyConfig(mm map[string]*query.Metadata, c Config) error {
 
 		if m.Interval == "" {
 			interval := calculateInterval(m, c)
-			klog.Infof("setting %q interval to %ds", name, interval)
+			klog.V(1).Infof("setting %q interval to %ds", name, interval)
 			m.Interval = strconv.Itoa(interval)
 		}
 
@@ -327,28 +332,26 @@ func Unpack(sourcePath, destPath string, c Config) error {
 	err = query.SaveToDirectory(p.Queries, destPath)
 	if err != nil {
 		return fmt.Errorf("save to dir: %v", err)
-
 	}
 	fmt.Printf("%d queries saved to %s\n", len(p.Queries), destPath)
 	return nil
 }
 
-// dailyQueryDuration returns what the total duration for a query would be for a day
+// dailyQueryDuration returns what the total duration for a query would be for a day.
 func dailyQueryDuration(interval string, d time.Duration) (time.Duration, int, error) {
 	i, err := strconv.Atoi(interval)
 	if err != nil {
 		return time.Duration(0), 0, err
 	}
 
-	runs := int(86400 / i)
+	runs := 86400 / i
 	return time.Duration(runs) * d, runs, nil
 }
 
-// Verify verifies the queries within a directory or pack.
-func Verify(path string, c Config) error {
+func loadAndApply(path string, c Config) (map[string]*query.Metadata, error) {
 	s, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("stat: %w", err)
+		return nil, fmt.Errorf("stat: %w", err)
 	}
 
 	mm := map[string]*query.Metadata{}
@@ -357,30 +360,105 @@ func Verify(path string, c Config) error {
 	case s.IsDir():
 		mm, err = query.LoadFromDir(path)
 		if err != nil {
-			return fmt.Errorf("load from dir: %w", err)
+			return mm, fmt.Errorf("load from dir: %w", err)
 		}
 	case strings.Contains(path, ".conf"):
 		p, err := query.LoadPack(path)
 		if err != nil {
-			return fmt.Errorf("load from dir: %w", err)
+			return mm, fmt.Errorf("load from dir: %w", err)
 		}
 		mm = p.Queries
 	default:
 		m, err := query.Load(path)
 		if err != nil {
-			return fmt.Errorf("load: %w", err)
+			return mm, fmt.Errorf("load: %w", err)
 		}
 		mm[m.Name] = m
 	}
 
 	if err := applyConfig(mm, c); err != nil {
-		return fmt.Errorf("apply: %w", err)
+		return mm, fmt.Errorf("apply: %w", err)
+	}
+
+	return mm, nil
+}
+
+// Run runs the queries within a directory or pack.
+func Run(path, output string, c Config) error {
+	mm, err := loadAndApply(path, c)
+	if err != nil {
+		return err
+	}
+
+	f := os.Stdout
+	if output != "" && output != "-" {
+		f, err = os.OpenFile(output, os.O_RDWR|os.O_CREATE, 0o700)
+		if err != nil {
+			return fmt.Errorf("unable to open output: %s", err)
+		}
+	}
+
+	errs := []error{}
+	qs := []*query.Metadata{}
+	for _, q := range mm {
+		qs = append(qs, q)
+	}
+
+	sort.Slice(qs, func(i, j int) bool { return qs[i].Name < qs[j].Name })
+	lastRows := 0
+
+	// TODO: Parallelize. Output must be sorted for diffing
+	for _, m := range qs {
+		m := m
+		name := m.Name
+
+		if cw := query.IsIncompatible(m); cw != "" {
+			klog.V(1).Infof("skipping incompatible query: %s (%s)", name, cw)
+			continue
+		}
+
+		vf, verr := query.Run(m)
+		if verr != nil {
+			klog.Errorf("%q failed: %v", name, verr)
+			errs = append(errs, verr)
+		}
+
+		// TODO: Consider CSV output
+		header := fmt.Sprintf("%s (%d rows)", name, len(vf.Rows))
+
+		// If this is a big entry after a short entry, add a space
+		if lastRows == 0 && len(vf.Rows) > 0 {
+			fmt.Fprintln(f, "")
+		}
+		fmt.Fprintln(f, header)
+
+		lastRows = len(vf.Rows)
+		if len(vf.Rows) == 0 {
+			continue
+		}
+
+		divider := strings.Repeat("-", utf8.RuneCountInString(header))
+		fmt.Fprintln(f, divider)
+		for _, v := range vf.Rows {
+			fmt.Fprintln(f, v)
+		}
+		fmt.Fprintln(f, "")
+	}
+
+	return errors.Join(errs...)
+}
+
+// Verify verifies the queries within a directory or pack.
+func Verify(path string, c Config) error {
+	mm, err := loadAndApply(path, c)
+	if err != nil {
+		return err
 	}
 
 	var (
-		verified, partial, errored uint64
-		totalQueryDuration         time.Duration
-		totalRuns                  int64
+		verified, partial  uint64
+		totalQueryDuration time.Duration
+		totalRuns          int64
 	)
 
 	sg := semgroup.NewGroup(context.Background(), int64(c.Workers))
@@ -391,11 +469,10 @@ func Verify(path string, c Config) error {
 
 		sg.Go(func() error {
 			klog.Infof("Verifying: %q ", name)
-			vf, verr := query.Verify(m)
+			vf, verr := query.Run(m)
 			if verr != nil {
 				klog.Errorf("%q failed validation: %v", name, verr)
 				return fmt.Errorf("%s: %w", name, verr)
-				errored++
 			}
 
 			// Short-circuit out of remaining tests if the query is not compatible with the local platform
@@ -405,39 +482,35 @@ func Verify(path string, c Config) error {
 			}
 
 			if vf.Elapsed > c.maxQueryDuration {
-				errored++
 				return fmt.Errorf("%q: %s exceeds --max-query-duration=%s", name, vf.Elapsed.Round(time.Millisecond), c.maxQueryDuration)
 			}
 
 			queryDurationPerDay, runsPerDay, err := dailyQueryDuration(m.Interval, vf.Elapsed)
 			if err != nil {
-				errored++
 				return fmt.Errorf("%q: failed to parse interval: %v", name, err)
 			}
 
 			atomic.AddInt64((*int64)(&totalQueryDuration), int64(queryDurationPerDay))
-			atomic.AddInt64((*int64)(&totalRuns), int64(runsPerDay))
+			atomic.AddInt64((&totalRuns), int64(runsPerDay))
 
 			if queryDurationPerDay > c.maxQueryDurationPerDay {
-				errored++
 				return fmt.Errorf("%q: %s exceeds --max-daily-query-duration=%s (%d runs * %s)", name, queryDurationPerDay.Round(time.Second), c.maxQueryDurationPerDay, runsPerDay, vf.Elapsed.Round(time.Millisecond))
 			}
 
-			if len(vf.Results) > c.MaxResults {
+			if len(vf.Rows) > c.MaxResults {
 				shortResult := []string{}
-				for _, r := range vf.Results {
-					shortResult = append(shortResult, fmt.Sprintf("%s", r))
+				for _, r := range vf.Rows {
+					shortResult = append(shortResult, r.String())
 				}
 				if len(shortResult) >= 10 {
 					shortResult = shortResult[0:10]
 					shortResult = append(shortResult, "...")
 				}
 
-				errored++
-				return fmt.Errorf("%q: %d results exceeds --max-results=%d:\n  %s", name, len(vf.Results), c.MaxResults, strings.Join(shortResult, "\n  "))
+				return fmt.Errorf("%q: %d results exceeds --max-results=%d:\n  %s", name, len(vf.Rows), c.MaxResults, strings.Join(shortResult, "\n  "))
 			}
 
-			klog.Infof("%q returned %d rows in %s, daily cost for interval %s (%d runs): %s", name, len(vf.Results), vf.Elapsed.Round(time.Millisecond), m.Interval, runsPerDay, queryDurationPerDay.Round(time.Second))
+			klog.Infof("%q returned %d rows in %s, daily cost for interval %s (%d runs): %s", name, len(vf.Rows), vf.Elapsed.Round(time.Millisecond), m.Interval, runsPerDay, queryDurationPerDay.Round(time.Second))
 			atomic.AddUint64(&verified, 1)
 			return nil
 		})
@@ -446,6 +519,7 @@ func Verify(path string, c Config) error {
 	errs := []error{}
 	// Someday this might return new go errors
 	errs = append(errs, sg.Wait())
+	errored := uint64(len(errs))
 
 	if verified == 0 {
 		errs = append(errs, fmt.Errorf("0 queries were fully verified"))
