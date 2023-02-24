@@ -421,6 +421,7 @@ func Run(path, output string, c Config) error {
 		if verr != nil {
 			klog.Errorf("%q failed: %v", name, verr)
 			errs = append(errs, verr)
+			continue
 		}
 
 		// TODO: Consider CSV output
