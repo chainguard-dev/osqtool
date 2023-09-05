@@ -196,26 +196,39 @@ func Parse(name string, bs []byte) (*Metadata, error) { //nolint: funlen // TODO
 		m.SingleLineQuery += ";"
 	}
 
-	if m.Platform != "" {
-		return m, nil
-	}
+	guessPlatform := ""
 
 	// If the platform field isn't filled in, try to guess via the name
 	switch {
 	case strings.HasSuffix(m.Name, "linux"):
-		m.Platform = "linux"
+		guessPlatform = "linux"
 	case strings.HasSuffix(m.Name, "macos"):
-		m.Platform = "darwin"
+		guessPlatform = "darwin"
 	case strings.HasSuffix(m.Name, "darwin"):
-		m.Platform = "darwin"
+		guessPlatform = "darwin"
 	case strings.HasSuffix(m.Name, "posix"):
-		m.Platform = "posix"
+		guessPlatform = "posix"
 	case strings.HasSuffix(m.Name, "unix"):
-		m.Platform = "posix"
+		guessPlatform = "posix"
 	case strings.HasSuffix(m.Name, "windows"):
-		m.Platform = "windows"
+		guessPlatform = "windows"
 	case strings.HasSuffix(m.Name, "win"):
+		guessPlatform = "windows"
+	}
+
+	switch m.Platform {
+	case "macos":
+		m.Platform = "darwin"
+	case "unix":
+		m.Platform = "posix"
+	case "win":
 		m.Platform = "windows"
+	case "":
+		m.Platform = guessPlatform
+	}
+
+	if guessPlatform != "" && m.Platform != guessPlatform {
+		return m, fmt.Errorf("platform is set to %q, but filename indicates %q", m.Platform, guessPlatform)
 	}
 
 	return m, nil
