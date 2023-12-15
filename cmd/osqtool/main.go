@@ -69,7 +69,7 @@ func main() {
 	}
 
 	action := args[0]
-	path := args[1]
+	paths := args[1:]
 	var err error
 	c := Config{
 		maxQueryDuration:            *maxQueryDurationFlag,
@@ -100,7 +100,7 @@ func main() {
 			klog.Exit(fmt.Errorf("osqueryi executable not found on the host! Download it from: https://osquery.io/downloads"))
 		}
 
-		err = Verify(path, c)
+		err = Verify(paths, c)
 		if err != nil {
 			klog.Exitf("verify failed: %v", err)
 		}
@@ -108,15 +108,15 @@ func main() {
 
 	switch action {
 	case "apply":
-		err = Apply(path, *outputFlag, c)
+		err = Apply(paths, *outputFlag, c)
 	case "pack":
-		err = Pack(path, *outputFlag, c)
+		err = Pack(paths, *outputFlag, c)
 	case "unpack":
-		err = Unpack(path, *outputFlag, c)
+		err = Unpack(paths, *outputFlag, c)
 	case "verify":
-		err = Verify(path, c)
+		err = Verify(paths, c)
 	case "run":
-		err = Run(path, *outputFlag, c)
+		err = Run(paths, *outputFlag, c)
 	default:
 		err = fmt.Errorf("unknown action")
 	}
@@ -266,16 +266,22 @@ func applyConfig(mm map[string]*query.Metadata, c Config) error {
 }
 
 // Apply applies programattic changes to an osquery pack.
-func Apply(sourcePath, output string, c Config) error {
-	p, err := query.LoadPack(sourcePath)
-	if err != nil {
-		return fmt.Errorf("load pack: %v", err)
+func Apply(sourcePaths []string, output string, c Config) error {
+	ps := []*query.Pack{}
+
+	for _, path := range sourcePaths {
+		p, err := query.LoadPack(path)
+		if err != nil {
+			return fmt.Errorf("load pack: %v", err)
+		}
+
+		if err := applyConfig(p.Queries, c); err != nil {
+			return fmt.Errorf("apply: %w", err)
+		}
+		ps = append(ps, p)
 	}
 
-	if err := applyConfig(p.Queries, c); err != nil {
-		return fmt.Errorf("apply: %w", err)
-	}
-
+	p := query.FlattenPacks(ps)
 	bs, err := query.RenderPack(p, &query.RenderConfig{SingleQuotes: c.SingleQuotes})
 	if err != nil {
 		return fmt.Errorf("render: %v", err)
@@ -290,18 +296,24 @@ func Apply(sourcePath, output string, c Config) error {
 }
 
 // Pack creates an osquery pack from a recursive directory of SQL files.
-func Pack(sourcePath, output string, c Config) error {
-	mm, err := query.LoadFromDir(sourcePath)
-	if err != nil {
-		return fmt.Errorf("load from dir: %v", err)
+func Pack(sourcePaths []string, output string, c Config) error {
+	mms := map[string]*query.Metadata{}
+	for _, path := range sourcePaths {
+		mm, err := query.LoadFromDir(path)
+		if err != nil {
+			return fmt.Errorf("load from dir %s: %v", path, err)
+		}
+
+		if err := applyConfig(mm, c); err != nil {
+			return fmt.Errorf("apply: %w", err)
+		}
+		for k, v := range mm {
+			mms[k] = v
+		}
 	}
 
-	if err := applyConfig(mm, c); err != nil {
-		return fmt.Errorf("apply: %w", err)
-	}
-
-	klog.Infof("Packing %d queries into %s ...", len(mm), output)
-	bs, err := query.RenderPack(&query.Pack{Queries: mm}, &query.RenderConfig{SingleQuotes: c.SingleQuotes})
+	klog.Infof("Packing %d queries into %s ...", len(mms), output)
+	bs, err := query.RenderPack(&query.Pack{Queries: mms}, &query.RenderConfig{SingleQuotes: c.SingleQuotes})
 	if err != nil {
 		return fmt.Errorf("render: %v", err)
 	}
@@ -315,25 +327,33 @@ func Pack(sourcePath, output string, c Config) error {
 }
 
 // Unpack extracts SQL files from an osquery pack.
-func Unpack(sourcePath, destPath string, c Config) error {
+func Unpack(sourcePaths []string, destPath string, c Config) error {
 	if destPath == "" {
 		destPath = "."
 	}
 
-	p, err := query.LoadPack(sourcePath)
-	if err != nil {
-		return fmt.Errorf("load pack: %v", err)
+	mms := map[string]*query.Metadata{}
+	for _, path := range sourcePaths {
+		p, err := query.LoadPack(path)
+		if err != nil {
+			return fmt.Errorf("load pack %s: %v", path, err)
+		}
+
+		if err := applyConfig(p.Queries, c); err != nil {
+			return fmt.Errorf("apply: %w", err)
+		}
+
+		for k, v := range p.Queries {
+			mms[k] = v
+		}
+
 	}
 
-	if err := applyConfig(p.Queries, c); err != nil {
-		return fmt.Errorf("apply: %w", err)
-	}
-
-	err = query.SaveToDirectory(p.Queries, destPath)
+	err := query.SaveToDirectory(mms, destPath)
 	if err != nil {
 		return fmt.Errorf("save to dir: %v", err)
 	}
-	fmt.Printf("%d queries saved to %s\n", len(p.Queries), destPath)
+	fmt.Printf("%d queries saved to %s\n", len(mms), destPath)
 	return nil
 }
 
@@ -348,32 +368,34 @@ func dailyQueryDuration(interval string, d time.Duration) (time.Duration, int, e
 	return time.Duration(runs) * d, runs, nil
 }
 
-func loadAndApply(path string, c Config) (map[string]*query.Metadata, error) {
-	s, err := os.Stat(path)
-	if err != nil {
-		return nil, fmt.Errorf("stat: %w", err)
-	}
-
+func loadAndApply(paths []string, c Config) (map[string]*query.Metadata, error) {
 	mm := map[string]*query.Metadata{}
 
-	switch {
-	case s.IsDir():
-		mm, err = query.LoadFromDir(path)
+	for _, path := range paths {
+		s, err := os.Stat(path)
 		if err != nil {
-			return mm, fmt.Errorf("load from dir: %w", err)
+			return nil, fmt.Errorf("stat: %w", err)
 		}
-	case strings.Contains(path, ".conf"):
-		p, err := query.LoadPack(path)
-		if err != nil {
-			return mm, fmt.Errorf("load from dir: %w", err)
+
+		switch {
+		case s.IsDir():
+			mm, err = query.LoadFromDir(path)
+			if err != nil {
+				return mm, fmt.Errorf("load from dir %s: %w", path, err)
+			}
+		case strings.Contains(path, ".conf"):
+			p, err := query.LoadPack(path)
+			if err != nil {
+				return mm, fmt.Errorf("load pack %s: %w", path, err)
+			}
+			mm = p.Queries
+		default:
+			m, err := query.Load(path)
+			if err != nil {
+				return mm, fmt.Errorf("load %s: %w", path, err)
+			}
+			mm[m.Name] = m
 		}
-		mm = p.Queries
-	default:
-		m, err := query.Load(path)
-		if err != nil {
-			return mm, fmt.Errorf("load: %w", err)
-		}
-		mm[m.Name] = m
 	}
 
 	if err := applyConfig(mm, c); err != nil {
@@ -384,7 +406,7 @@ func loadAndApply(path string, c Config) (map[string]*query.Metadata, error) {
 }
 
 // Run runs the queries within a directory or pack.
-func Run(path, output string, c Config) error {
+func Run(path []string, output string, c Config) error {
 	mm, err := loadAndApply(path, c)
 	if err != nil {
 		return err
@@ -394,6 +416,7 @@ func Run(path, output string, c Config) error {
 	if output != "" && output != "-" {
 		f, err = os.OpenFile(output, os.O_RDWR|os.O_CREATE, 0o700)
 		if err != nil {
+
 			return fmt.Errorf("unable to open output: %s", err)
 		}
 	}
@@ -450,7 +473,7 @@ func Run(path, output string, c Config) error {
 }
 
 // Verify verifies the queries within a directory or pack.
-func Verify(path string, c Config) error {
+func Verify(path []string, c Config) error {
 	mm, err := loadAndApply(path, c)
 	if err != nil {
 		return err

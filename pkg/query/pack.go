@@ -25,6 +25,26 @@ type Pack struct {
 	Oncall   string `json:"oncall,omitempty"`
 }
 
+// FlattenPacks flattens an array of Pack objects
+func FlattenPacks(ps []*Pack) *Pack {
+	var c *Pack
+
+	for _, p := range ps {
+		for k, v := range p.Queries {
+			c.Queries[k] = v
+		}
+		for k, v := range p.Discovery {
+			c.Discovery[k] = v
+		}
+
+		c.Shard = p.Shard
+		c.Platform = p.Platform
+		c.Version = p.Version
+		c.Oncall = p.Oncall
+	}
+	return c
+}
+
 type RenderConfig struct {
 	SingleQuotes bool
 }
