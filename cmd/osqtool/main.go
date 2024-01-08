@@ -299,6 +299,7 @@ func Apply(sourcePaths []string, output string, c Config) error {
 func Pack(sourcePaths []string, output string, c Config) error {
 	mms := map[string]*query.Metadata{}
 	for _, path := range sourcePaths {
+		klog.Infof("Loading from %s ...", path)
 		mm, err := query.LoadFromDir(path)
 		if err != nil {
 			return fmt.Errorf("load from dir %s: %v", path, err)
@@ -377,9 +378,10 @@ func loadAndApply(paths []string, c Config) (map[string]*query.Metadata, error) 
 			return nil, fmt.Errorf("stat: %w", err)
 		}
 
+		loaded := map[string]*query.Metadata{}
 		switch {
 		case s.IsDir():
-			mm, err = query.LoadFromDir(path)
+			loaded, err = query.LoadFromDir(path)
 			if err != nil {
 				return mm, fmt.Errorf("load from dir %s: %w", path, err)
 			}
@@ -388,16 +390,26 @@ func loadAndApply(paths []string, c Config) (map[string]*query.Metadata, error) 
 			if err != nil {
 				return mm, fmt.Errorf("load pack %s: %w", path, err)
 			}
-			mm = p.Queries
+			loaded = p.Queries
 		default:
 			m, err := query.Load(path)
 			if err != nil {
 				return mm, fmt.Errorf("load %s: %w", path, err)
 			}
-			mm[m.Name] = m
+			loaded[m.Name] = m
 		}
+
+		for k, v := range loaded {
+			if mm[k] != nil {
+				return mm, fmt.Errorf("conflict: %q already loaded", k)
+			}
+			mm[k] = v
+		}
+
+		klog.Infof("Loaded %d queries from %s", len(loaded), path)
 	}
 
+	klog.Infof("Applying configuration to %d queries: %+v", len(mm), c)
 	if err := applyConfig(mm, c); err != nil {
 		return mm, fmt.Errorf("apply: %w", err)
 	}
